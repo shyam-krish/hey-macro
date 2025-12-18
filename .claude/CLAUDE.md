@@ -15,6 +15,10 @@ Users speak or type what they ate, the app sends it to an LLM for nutritional an
 - **Language**: TypeScript
 - **Package Manager**: Yarn
 
+## External Libraries
+Always use context7 when I need code generation for a library/API documentation. This means you should automatically use the Context7 MCP
+tools to resolve library id and get library docs without me having to explicitly ask.
+
 ## Directory Structure (Flat)
 
 ```

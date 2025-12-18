@@ -25,16 +25,6 @@ export interface FoodEntry extends BaseEntity, FoodItem {
   foodEntryID: string;
   userID: string;
 }
-
-export interface FoodItem {
-  name: string;
-  quantity: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-}
-
 export interface DailyLog extends BaseEntity {
   dailyLogID: string;
   userID: string;
@@ -48,6 +38,16 @@ export interface DailyLog extends BaseEntity {
   dinner: FoodEntry[];
   snacks: FoodEntry[];
 }
+
+export interface FoodItem {
+  name: string;
+  quantity: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
 
 export interface LLMResponse {
   breakfast: FoodItem[];

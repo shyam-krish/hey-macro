@@ -25,6 +25,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "@react-native-voice/voice",
+        {
+          "microphonePermission": "Allow Hey Macro to access the microphone to record food entries",
+          "speechRecognitionPermission": "Allow Hey Macro to recognize speech for logging meals"
+        }
+      ]
+    ]
   }
 }
