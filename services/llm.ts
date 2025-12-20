@@ -1,151 +1,115 @@
-import { Content, GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import { LLMResponse, FoodItem, DailyLog } from '../types';
 import { foodParsingPrompt } from '../constants';
+import { openaiProvider, OPENAI_DEFAULT_MODEL } from './openai';
+import { geminiProvider, GEMINI_DEFAULT_MODEL } from './gemini';
+import { LLMMessage, LLMResponseSchema, LLMProvider } from './llmTypes';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+// Provider selection
+type ProviderType = 'openai' | 'gemini';
 
-if (!GEMINI_API_KEY) {
-  console.warn('GEMINI_API_KEY not found in environment variables');
+const DEFAULT_PROVIDER: ProviderType = 'openai';
+
+function getProvider(providerType: ProviderType): LLMProvider {
+  switch (providerType) {
+    case 'openai':
+      return openaiProvider;
+    case 'gemini':
+      return geminiProvider;
+    default:
+      return openaiProvider;
+  }
 }
 
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY || '' });
-
-// Define the JSON schema for FoodItem
-const foodItemSchema = {
-  type: Type.OBJECT,
-  properties: {
-    name: {
-      type: Type.STRING,
-      description: 'Name of the food item',
-    },
-    quantity: {
-      type: Type.STRING,
-      description: 'Descriptive quantity (e.g., "3 large", "1 cup", "150g")',
-    },
-    calories: {
-      type: Type.INTEGER,
-      description: 'Total calories',
-    },
-    protein: {
-      type: Type.INTEGER,
-      description: 'Protein in grams',
-    },
-    carbs: {
-      type: Type.INTEGER,
-      description: 'Carbohydrates in grams',
-    },
-    fat: {
-      type: Type.INTEGER,
-      description: 'Fat in grams',
-    },
-  },
-  required: ['name', 'quantity', 'calories', 'protein', 'carbs', 'fat'],
-  propertyOrdering: ['name', 'quantity', 'calories', 'protein', 'carbs', 'fat'],
-};
-
-// Define the JSON schema for LLMResponse
-const llmResponseSchema = {
-  type: Type.OBJECT,
-  properties: {
-    breakfast: {
-      type: Type.ARRAY,
-      items: foodItemSchema,
-      description: 'Food items for breakfast',
-    },
-    lunch: {
-      type: Type.ARRAY,
-      items: foodItemSchema,
-      description: 'Food items for lunch',
-    },
-    dinner: {
-      type: Type.ARRAY,
-      items: foodItemSchema,
-      description: 'Food items for dinner',
-    },
-    snacks: {
-      type: Type.ARRAY,
-      items: foodItemSchema,
-      description: 'Food items for snacks',
-    },
-  },
-  required: ['breakfast', 'lunch', 'dinner', 'snacks'],
-  propertyOrdering: ['breakfast', 'lunch', 'dinner', 'snacks'],
-};
+function getDefaultModel(providerType: ProviderType): string {
+  switch (providerType) {
+    case 'openai':
+      return OPENAI_DEFAULT_MODEL;
+    case 'gemini':
+      return GEMINI_DEFAULT_MODEL;
+    default:
+      return OPENAI_DEFAULT_MODEL;
+  }
+}
 
 interface ParseFoodInputParams {
   transcript: string;
   currentTime?: Date;
   previousDayLogs?: DailyLog[];
+  provider?: ProviderType;
+  model?: string;
 }
 
 export async function parseFoodInput({
   transcript,
   currentTime = new Date(),
   previousDayLogs,
+  provider = DEFAULT_PROVIDER,
+  model,
 }: ParseFoodInputParams): Promise<LLMResponse> {
   try {
-    const contents = buildContents(transcript, currentTime, previousDayLogs);
+    const llmProvider = getProvider(provider);
+    const modelToUse = model || getDefaultModel(provider);
+    const messages = buildMessages(transcript, currentTime, previousDayLogs);
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: contents,
-      config: {
-        temperature: 0.3,
-        maxOutputTokens: 2000,
-        responseMimeType: 'application/json',
-        responseSchema: llmResponseSchema,
-        tools: [{ googleSearch: {} }],
-        thinkingConfig: {
-          thinkingBudget: -1,
-          includeThoughts: true,
-          thinkingLevel: ThinkingLevel.MEDIUM,
-        },
+    const result = await llmProvider.generate({
+      model: modelToUse,
+      messages,
+      schema: LLMResponseSchema,
+      schemaName: 'food_log_response',
+      webSearch: provider === 'openai', // Only enable web search for OpenAI (Gemini doesn't support it with JSON schema)
+      reasoning: {
+        effort: 'low',
       },
+      temperature: 0.3,
+      maxTokens: 2000,
     });
 
-    const text = response.text;
-
-    if (!text) {
-      throw new Error('No response text from Gemini');
-    }
-
-    // Log Google Search usage if available
-    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-    if (groundingMetadata?.webSearchQueries && groundingMetadata.webSearchQueries.length > 0) {
-      console.log('🔍 Google Search queries used:', groundingMetadata.webSearchQueries);
-      const searchChunks = groundingMetadata.groundingChunks;
-      if (searchChunks && searchChunks.length > 0) {
-        const urls = searchChunks.map(chunk => chunk.web?.uri).filter(Boolean);
-        console.log('📚 Sources:', urls);
-      }
-    }
-
-    const parsed = JSON.parse(text) as LLMResponse;
-
-    return validateAndNormalizeLLMResponse(parsed);
+    // Validate and normalize the response
+    return validateAndNormalizeLLMResponse(result);
   } catch (error) {
     console.error('Error parsing food input:', error);
-    throw new Error(`Failed to parse food input: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Failed to parse food input: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
   }
 }
 
-function buildContents(
+function buildMessages(
   transcript: string,
   currentTime: Date,
   previousDayLogs?: DailyLog[]
-): Content[] {
-
+): LLMMessage[] {
   const systemPrompt = foodParsingPrompt;
 
-  const userPrompt = `
-  Transcript: ${transcript}
-  Current Date/Time: ${currentTime.toISOString()}
-  Previous Day Logs: ${previousDayLogs?.map(log => log.date).join(', ')}
-  `;
-  
+  let previousMealsContext = '';
+  if (previousDayLogs && previousDayLogs.length > 0) {
+    previousMealsContext = previousDayLogs
+      .map((log) => {
+        const meals = [];
+        if (log.breakfast.length > 0) {
+          meals.push(`Breakfast: ${log.breakfast.map((f) => `${f.quantity} ${f.name}`).join(', ')}`);
+        }
+        if (log.lunch.length > 0) {
+          meals.push(`Lunch: ${log.lunch.map((f) => `${f.quantity} ${f.name}`).join(', ')}`);
+        }
+        if (log.dinner.length > 0) {
+          meals.push(`Dinner: ${log.dinner.map((f) => `${f.quantity} ${f.name}`).join(', ')}`);
+        }
+        if (log.snacks.length > 0) {
+          meals.push(`Snacks: ${log.snacks.map((f) => `${f.quantity} ${f.name}`).join(', ')}`);
+        }
+        return `${log.date}:\n${meals.join('\n')}`;
+      })
+      .join('\n\n');
+  }
+
+  const userPrompt = `Current Date/Time: ${currentTime.toISOString()}
+
+${previousMealsContext ? `Previous meals for reference:\n${previousMealsContext}\n\n` : ''}Transcript: ${transcript}`;
+
   return [
-    { role: 'system', parts: [{ text: systemPrompt }] },
-    { role: 'user', parts: [{ text: userPrompt }] },
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
   ];
 }
 
@@ -161,9 +125,7 @@ function validateAndNormalizeLLMResponse(response: any): LLMResponse {
 
   for (const mealType of mealTypes) {
     if (Array.isArray(response[mealType])) {
-      normalized[mealType] = response[mealType].map((item: any) =>
-        validateFoodItem(item)
-      );
+      normalized[mealType] = response[mealType].map((item: any) => validateFoodItem(item));
     }
   }
 
