@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "start": "expo start --tunnel",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "ios:dev": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
@@ -14,6 +15,7 @@
     "date-fns": "^4.1.0",
     "expo": "~54.0.29",
     "expo-av": "^16.0.8",
+    "expo-env": "^1.1.1",
     "expo-sqlite": "^16.0.10",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
