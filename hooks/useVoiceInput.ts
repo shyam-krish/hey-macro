@@ -50,10 +50,29 @@ export function useVoiceInput(): UseVoiceInputResult {
     }
   };
 
-  const onSpeechError = (e: SpeechErrorEvent) => {
-    console.error('Speech error', e);
-    setError(e.error?.message || 'Speech recognition error');
+  const onSpeechError = async (e: SpeechErrorEvent) => {
     setIsRecording(false);
+
+    // Handle "No speech detected" gracefully - just reset without showing error
+    const errorCode = e.error?.code;
+    const errorMessage = e.error?.message || '';
+
+    if (errorCode === 'recognition_fail' || errorMessage.includes('No speech detected')) {
+      // Silently handle - user just didn't speak, no need to show error
+      console.log('No speech detected, resetting...');
+      setError(null);
+      // Cancel to fully reset the voice recognition state
+      try {
+        await Voice.cancel();
+      } catch (err) {
+        // Ignore cancel errors
+      }
+      return;
+    }
+
+    // For other errors, show the error message
+    console.error('Speech error', e);
+    setError(errorMessage || 'Speech recognition error');
   };
 
   const startRecording = useCallback(async () => {

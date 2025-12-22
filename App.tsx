@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet,
@@ -6,12 +7,14 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { FoodEntry } from './types';
 import { useAppData } from './hooks/useAppData';
 import { useVoiceFoodLogger } from './hooks/useVoiceFoodLogger';
+import { MealDetailSheet } from './components/MealDetailSheet';
 
 // Calorie Ring Component
 function CalorieRing({
@@ -46,7 +49,7 @@ function CalorieRing({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="#fff"
+          stroke="#34d399"
           strokeWidth={strokeWidth}
           fill="transparent"
           strokeDasharray={circumference}
@@ -106,9 +109,11 @@ function getMealTotals(entries: FoodEntry[]) {
 function MealCard({
   title,
   entries,
+  onPress,
 }: {
   title: string;
   entries: FoodEntry[];
+  onPress: () => void;
 }) {
   const totals = getMealTotals(entries);
 
@@ -117,29 +122,40 @@ function MealCard({
   }
 
   return (
-    <View style={styles.mealCard}>
+    <TouchableOpacity style={styles.mealCard} onPress={onPress} activeOpacity={0.7}>
       <Text style={styles.mealTitle}>{title}</Text>
       <View style={styles.mealContent}>
         <View style={styles.mealItems}>
           {entries.map((entry) => (
-            <Text key={entry.foodEntryID} style={styles.mealItem}>
-              - {entry.name}
-            </Text>
+            <View key={entry.foodEntryID} style={styles.mealItemContainer}>
+              <Text style={styles.mealItem}>{entry.name}</Text>
+            </View>
           ))}
         </View>
         <View style={styles.mealTotals}>
-          <Text style={styles.mealTotalText}>{totals.calories} cal</Text>
-          <Text style={styles.mealTotalText}>{totals.protein}g P</Text>
-          <Text style={styles.mealTotalText}>{totals.carbs}g C</Text>
-          <Text style={styles.mealTotalText}>{totals.fat}g F</Text>
+          <Text style={styles.mealTotalText}>
+            {totals.calories} <Text style={styles.mealTotalUnit}>cal</Text>
+          </Text>
+          <Text style={styles.mealTotalText}>
+            {totals.protein}g <Text style={styles.mealTotalUnit}>P</Text>
+          </Text>
+          <Text style={styles.mealTotalText}>
+            {totals.carbs}g <Text style={styles.mealTotalUnit}>C</Text>
+          </Text>
+          <Text style={styles.mealTotalText}>
+            {totals.fat}g <Text style={styles.mealTotalUnit}>F</Text>
+          </Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
+type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snacks';
+
 export default function App() {
-  const { targets, dailyLog, loading, error } = useAppData();
+  const { targets, dailyLog, loading, error, refresh } = useAppData();
+  const [selectedMeal, setSelectedMeal] = useState<{ title: string; type: MealType } | null>(null);
   const {
     isRecording,
     isProcessing,
@@ -148,25 +164,41 @@ export default function App() {
     error: voiceError,
     startRecording,
     stopRecordingAndParse,
+    saveParsedFood,
     reset,
   } = useVoiceFoodLogger();
 
   const handleMicPress = async () => {
     if (isRecording) {
-      // Stop recording and parse
-      await stopRecordingAndParse();
+      // Stop recording and parse with today's log for updates
+      await stopRecordingAndParse({ todayLog: dailyLog ?? undefined });
     } else {
       // Start recording
       await startRecording();
     }
   };
 
-  // Log results for now (we'll persist later)
-  if (parsedFood) {
-    console.log('Parsed food:', JSON.stringify(parsedFood, null, 2));
-    // TODO: Save to database
-    reset();
-  }
+  // Save parsed food to database when available
+  useEffect(() => {
+    if (!parsedFood || !dailyLog) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await saveParsedFood(dailyLog.dailyLogID, 'default-user');
+        if (cancelled) return;
+        reset();
+        await refresh();
+      } catch (err) {
+        console.error('Error saving food:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [parsedFood]);
 
   return (
     <SafeAreaProvider>
@@ -212,19 +244,42 @@ export default function App() {
             {/* Food Section */}
             <ScrollView style={styles.foodSection} contentContainerStyle={styles.foodSectionContent}>
               <Text style={styles.foodSectionTitle}>Food</Text>
-              <MealCard title="Breakfast" entries={dailyLog.breakfast} />
-              <MealCard title="Lunch" entries={dailyLog.lunch} />
-              <MealCard title="Dinner" entries={dailyLog.dinner} />
-              <MealCard title="Snacks" entries={dailyLog.snacks} />
+              <MealCard
+                title="Breakfast"
+                entries={dailyLog.breakfast}
+                onPress={() => setSelectedMeal({ title: 'Breakfast', type: 'breakfast' })}
+              />
+              <MealCard
+                title="Lunch"
+                entries={dailyLog.lunch}
+                onPress={() => setSelectedMeal({ title: 'Lunch', type: 'lunch' })}
+              />
+              <MealCard
+                title="Dinner"
+                entries={dailyLog.dinner}
+                onPress={() => setSelectedMeal({ title: 'Dinner', type: 'dinner' })}
+              />
+              <MealCard
+                title="Snacks"
+                entries={dailyLog.snacks}
+                onPress={() => setSelectedMeal({ title: 'Snacks', type: 'snacks' })}
+              />
               {/* Bottom padding for floating buttons */}
               <View style={{ height: 100 }} />
             </ScrollView>
 
-            {/* Floating Action Buttons */}
+            {/* Meal Detail Sheet */}
+            {selectedMeal && (
+              <MealDetailSheet
+                visible={selectedMeal !== null}
+                title={selectedMeal.title}
+                entries={dailyLog[selectedMeal.type]}
+                onClose={() => setSelectedMeal(null)}
+              />
+            )}
+
+            {/* Floating Action Button */}
             <View style={styles.fabContainer}>
-              <TouchableOpacity style={styles.fab}>
-                <Text style={styles.fabText}>Aa</Text>
-              </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.fab,
@@ -235,9 +290,14 @@ export default function App() {
                 disabled={isProcessing}
               >
                 {isProcessing ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator size="large" color="#fff" />
+                ) : isRecording ? (
+                  <View style={styles.stopIcon} />
                 ) : (
-                  <Text style={styles.fabText}>{isRecording ? '⏹' : '🎤'}</Text>
+                  <Image
+                    source={require('./assets/mic.png')}
+                    style={styles.micIcon}
+                  />
                 )}
               </TouchableOpacity>
             </View>
@@ -349,7 +409,7 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#fff',
+    backgroundColor: '#065f46',
     borderRadius: 4,
   },
 
@@ -383,52 +443,68 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#1a1a1a',
     borderRadius: 12,
-    padding: 15,
+    overflow: 'hidden',
   },
   mealItems: {
     flex: 1,
-    gap: 4,
+    gap: 8,
+    padding: 15,
+  },
+  mealItemContainer: {
+    borderLeftWidth: 2,
+    borderLeftColor: '#666',
+    paddingLeft: 12,
   },
   mealItem: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: 'Avenir Next',
   },
   mealTotals: {
     alignItems: 'flex-end',
     justifyContent: 'center',
     gap: 2,
+    backgroundColor: '#252525',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
   },
   mealTotalText: {
     color: '#888',
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'DIN Alternate',
   },
+  mealTotalUnit: {
+    color: '#065f46',
+  },
 
-  // Floating Action Buttons
+  // Floating Action Button
   fabContainer: {
     position: 'absolute',
     bottom: 40,
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
   fab: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#1a1a1a',
     borderWidth: 1,
     borderColor: '#333',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fabText: {
-    color: '#fff',
-    fontSize: 20,
-    fontFamily: 'Avenir Next',
-    fontWeight: '600',
+  micIcon: {
+    width: 36,
+    height: 36,
+    tintColor: '#fff',
+  },
+  stopIcon: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#fff',
+    borderRadius: 4,
   },
   fabRecording: {
     backgroundColor: '#ff4444',

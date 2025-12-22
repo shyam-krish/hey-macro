@@ -6,7 +6,7 @@
 import 'react-native-get-random-values'; // Must be imported before uuid
 import * as SQLite from 'expo-sqlite';
 import { v4 as uuidv4 } from 'uuid';
-import type { User, MacroTargets, FoodEntry, DailyLog } from '../types';
+import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse } from '../types';
 
 const DATABASE_NAME = 'heymacro.db';
 const DEFAULT_USER_ID = 'default-user';
@@ -341,6 +341,53 @@ export async function addFoodEntry(
     };
   } catch (error) {
     console.error('Failed to add food entry:', error);
+    throw error;
+  }
+}
+
+/**
+ * Replace all food entries for a daily log with new entries from LLM response
+ * This deletes all existing entries and inserts the new complete state
+ */
+export async function replaceDailyFoodEntries(
+  userID: string,
+  dailyLogID: string,
+  foodData: LLMResponse
+): Promise<void> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const now = getCurrentTimestamp();
+    const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+
+    // Delete all existing entries for this daily log
+    await db.runAsync('DELETE FROM food_entries WHERE dailyLogID = ?', [dailyLogID]);
+
+    // Insert all new entries
+    for (const mealType of mealTypes) {
+      const items = foodData[mealType];
+      for (const food of items) {
+        const foodEntryID = uuidv4();
+        await db.runAsync(
+          'INSERT INTO food_entries (foodEntryID, userID, dailyLogID, mealType, name, quantity, calories, protein, carbs, fat, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [foodEntryID, userID, dailyLogID, mealType, food.name, food.quantity, food.calories, food.protein, food.carbs, food.fat, now, now]
+        );
+      }
+    }
+
+    // Update daily log totals
+    const allItems = [...foodData.breakfast, ...foodData.lunch, ...foodData.dinner, ...foodData.snacks];
+    const totalCalories = allItems.reduce((sum, item) => sum + item.calories, 0);
+    const totalProtein = allItems.reduce((sum, item) => sum + item.protein, 0);
+    const totalCarbs = allItems.reduce((sum, item) => sum + item.carbs, 0);
+    const totalFat = allItems.reduce((sum, item) => sum + item.fat, 0);
+
+    await db.runAsync(
+      'UPDATE daily_logs SET totalCalories = ?, totalProtein = ?, totalCarbs = ?, totalFat = ?, updatedAt = ? WHERE dailyLogID = ?',
+      [totalCalories, totalProtein, totalCarbs, totalFat, now, dailyLogID]
+    );
+  } catch (error) {
+    console.error('Failed to replace daily food entries:', error);
     throw error;
   }
 }

@@ -34,6 +34,7 @@ function getDefaultModel(providerType: ProviderType): string {
 interface ParseFoodInputParams {
   transcript: string;
   currentTime?: Date;
+  todayLog?: DailyLog;
   previousDayLogs?: DailyLog[];
   provider?: ProviderType;
   model?: string;
@@ -42,6 +43,7 @@ interface ParseFoodInputParams {
 export async function parseFoodInput({
   transcript,
   currentTime = new Date(),
+  todayLog,
   previousDayLogs,
   provider = DEFAULT_PROVIDER,
   model,
@@ -49,7 +51,7 @@ export async function parseFoodInput({
   try {
     const llmProvider = getProvider(provider);
     const modelToUse = model || getDefaultModel(provider);
-    const messages = buildMessages(transcript, currentTime, previousDayLogs);
+    const messages = buildMessages(transcript, currentTime, todayLog, previousDayLogs);
 
     const result = await llmProvider.generate({
       model: modelToUse,
@@ -74,9 +76,27 @@ export async function parseFoodInput({
   }
 }
 
+function formatMealsFromLog(log: DailyLog): string[] {
+  const meals: string[] = [];
+  if (log.breakfast.length > 0) {
+    meals.push(`Breakfast: ${log.breakfast.map((f) => `${f.name} (${f.quantity})`).join(', ')}`);
+  }
+  if (log.lunch.length > 0) {
+    meals.push(`Lunch: ${log.lunch.map((f) => `${f.name} (${f.quantity})`).join(', ')}`);
+  }
+  if (log.dinner.length > 0) {
+    meals.push(`Dinner: ${log.dinner.map((f) => `${f.name} (${f.quantity})`).join(', ')}`);
+  }
+  if (log.snacks.length > 0) {
+    meals.push(`Snacks: ${log.snacks.map((f) => `${f.name} (${f.quantity})`).join(', ')}`);
+  }
+  return meals;
+}
+
 function buildMessages(
   transcript: string,
   currentTime: Date,
+  todayLog?: DailyLog,
   previousDayLogs?: DailyLog[]
 ): LLMMessage[] {
   const systemPrompt = foodParsingPrompt;
@@ -85,27 +105,26 @@ function buildMessages(
   if (previousDayLogs && previousDayLogs.length > 0) {
     previousMealsContext = previousDayLogs
       .map((log) => {
-        const meals = [];
-        if (log.breakfast.length > 0) {
-          meals.push(`Breakfast: ${log.breakfast.map((f) => `${f.quantity} ${f.name}`).join(', ')}`);
-        }
-        if (log.lunch.length > 0) {
-          meals.push(`Lunch: ${log.lunch.map((f) => `${f.quantity} ${f.name}`).join(', ')}`);
-        }
-        if (log.dinner.length > 0) {
-          meals.push(`Dinner: ${log.dinner.map((f) => `${f.quantity} ${f.name}`).join(', ')}`);
-        }
-        if (log.snacks.length > 0) {
-          meals.push(`Snacks: ${log.snacks.map((f) => `${f.quantity} ${f.name}`).join(', ')}`);
-        }
+        const meals = formatMealsFromLog(log);
         return `${log.date}:\n${meals.join('\n')}`;
       })
       .join('\n\n');
   }
 
+  let todayFoodContext = 'Empty';
+  if (todayLog) {
+    const meals = formatMealsFromLog(todayLog);
+    if (meals.length > 0) {
+      todayFoodContext = meals.join('\n');
+    }
+  }
+
   const userPrompt = `Current Date/Time: ${currentTime.toISOString()}
 
-${previousMealsContext ? `Previous meals for reference:\n${previousMealsContext}\n\n` : ''}Transcript: ${transcript}`;
+${previousMealsContext ? `Previous meals for reference:\n${previousMealsContext}\n\n` : ''}Today's food so far:
+${todayFoodContext}
+
+Transcript: ${transcript}`;
 
   return [
     { role: 'system', content: systemPrompt },

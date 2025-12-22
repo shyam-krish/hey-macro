@@ -10,8 +10,9 @@ Users speak or type what they ate, the app sends it to an LLM for nutritional an
 
 - **Framework**: React Native with Expo (blank-typescript template)
 - **Storage**: expo-sqlite (local only, no backend)
-- **Voice**: TBD
-- **Audio**: TBD
+- **Voice**: @react-native-voice/voice (local speech-to-text)
+- **LLM Providers**: OpenAI (default) and Google Gemini
+- **Schema Validation**: Zod
 - **Language**: TypeScript
 - **Package Manager**: Yarn
 
@@ -19,21 +20,30 @@ Users speak or type what they ate, the app sends it to an LLM for nutritional an
 Always use context7 when I need code generation for a library/API documentation. This means you should automatically use the Context7 MCP
 tools to resolve library id and get library docs without me having to explicitly ask.
 
-## Directory Structure (Flat)
+## Directory Structure
 
 ```
 hey-macro/
-├── App.tsx           # Main entry point, all UI starts here
-├── storage.ts        # SQLite operations
-├── llm.ts            # LLM API calls
-├── types.ts          # TypeScript interfaces
+├── App.tsx                    # Main entry point, all UI starts here
+├── types.ts                   # TypeScript interfaces
+├── constants.ts               # System prompts and mock data
 ├── app.json
 ├── package.json
+├── hooks/
+│   ├── useAppData.ts          # Main app data hook
+│   ├── useVoiceInput.ts       # Voice recording hook
+│   └── useVoiceFoodLogger.ts  # Voice + LLM integration
+├── services/
+│   ├── llmTypes.ts            # Common LLM types and Zod schemas
+│   ├── openai.ts              # OpenAI Responses API provider
+│   ├── gemini.ts              # Google Gemini provider
+│   ├── llm.ts                 # Unified LLM interface
+│   └── storage.ts             # SQLite operations
 └── .claude/
     └── CLAUDE.md
 ```
 
-Extract components/hooks into separate files only when they get unwieldy. Let structure emerge from need.
+Structure has emerged organically - hooks for React state, services for business logic.
 
 ## UI Layout
 
@@ -251,13 +261,48 @@ Same flow as voice from here
 
 ## LLM Integration
 
-The LLM receives:
+### Architecture
+
+The app uses a **model-agnostic architecture** with support for multiple LLM providers:
+
+**Providers:**
+- **OpenAI** (default) - `gpt-5.2` via Responses API
+  - ✅ Web search tool
+  - ✅ Structured JSON schema with Zod
+  - ✅ Reasoning capability
+- **Gemini** - `gemini-2.5-flash` via generateContent
+  - ❌ No web search with JSON schema (API limitation)
+  - ✅ Structured JSON schema
+  - ✅ Thinking/reasoning capability
+
+**Schema Validation:**
+Uses Zod schemas for type-safe parsing:
+```typescript
+const FoodItemSchema = z.object({
+  name: z.string(),
+  quantity: z.string(),
+  calories: z.number(),
+  protein: z.number(),
+  carbs: z.number(),
+  fat: z.number(),
+});
+
+const LLMResponseSchema = z.object({
+  breakfast: z.array(FoodItemSchema),
+  lunch: z.array(FoodItemSchema),
+  dinner: z.array(FoodItemSchema),
+  snacks: z.array(FoodItemSchema),
+});
+```
+
+**Input:**
 - User's transcript (voice or text)
 - Current time (to help infer meal type)
-- Previous day's log (for "leftovers" context)
-- Optional: user's common foods
+- Previous day's logs (for "leftovers" context)
+- System prompt with detailed instructions
 
-Expected response format:
+**Output:**
+Structured JSON guaranteed to match the schema:
 ```json
 {
   "breakfast": [
@@ -269,11 +314,12 @@ Expected response format:
 }
 ```
 
-The LLM should:
+**Features:**
 - Parse natural language into structured food items
-- Estimate macros (using web search if available)
+- Estimate macros (using web search for OpenAI)
 - Infer meal type from context/time if not explicit
 - Handle references like "same as yesterday" or "leftover chicken"
+- Low-effort reasoning for better nutritional estimates
 
 ## Implementation Order
 
@@ -292,6 +338,14 @@ The LLM should:
 - All macros stored as integers (round as needed)
 - IDs generated with uuid v4
 - Meal types: 'breakfast' | 'lunch' | 'dinner' | 'snacks'
+
+## Environment Variables
+
+Required API keys:
+```
+EXPO_PUBLIC_OPENAI_API_KEY=sk-...      # For OpenAI (default provider)
+EXPO_PUBLIC_GEMINI_API_KEY=...         # For Gemini (optional)
+```
 
 ## Running the App
 

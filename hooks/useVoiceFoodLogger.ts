@@ -1,7 +1,13 @@
 import { useState, useCallback } from 'react';
 import { useVoiceInput } from './useVoiceInput';
 import { parseFoodInput } from '../services/llm';
+import { replaceDailyFoodEntries } from '../services/storage';
 import { LLMResponse, DailyLog } from '../types';
+
+export interface StopRecordingOptions {
+  todayLog?: DailyLog;
+  previousDayLogs?: DailyLog[];
+}
 
 export interface UseVoiceFoodLoggerResult {
   isRecording: boolean;
@@ -10,7 +16,8 @@ export interface UseVoiceFoodLoggerResult {
   parsedFood: LLMResponse | null;
   error: string | null;
   startRecording: () => Promise<void>;
-  stopRecordingAndParse: (previousDayLog?: DailyLog) => Promise<void>;
+  stopRecordingAndParse: (options?: StopRecordingOptions) => Promise<void>;
+  saveParsedFood: (dailyLogID: string, userID: string) => Promise<void>;
   cancelRecording: () => void;
   reset: () => void;
 }
@@ -22,12 +29,12 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
   const [llmError, setLlmError] = useState<string | null>(null);
 
   const stopRecordingAndParse = useCallback(
-    async (previousDayLog?: DailyLog) => {
+    async (options?: StopRecordingOptions) => {
       try {
         await voiceInput.stopRecording();
 
+        // If no transcript, just silently return - the voice error handler will deal with it
         if (!voiceInput.transcript) {
-          setLlmError('No speech detected. Please try again.');
           return;
         }
 
@@ -37,7 +44,8 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
         const result = await parseFoodInput({
           transcript: voiceInput.transcript,
           currentTime: new Date(),
-          previousDayLog,
+          todayLog: options?.todayLog,
+          previousDayLogs: options?.previousDayLogs,
         });
 
         setParsedFood(result);
@@ -49,6 +57,14 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
       }
     },
     [voiceInput]
+  );
+
+  const saveParsedFood = useCallback(
+    async (dailyLogID: string, userID: string): Promise<void> => {
+      if (!parsedFood) return;
+      await replaceDailyFoodEntries(userID, dailyLogID, parsedFood);
+    },
+    [parsedFood]
   );
 
   const reset = useCallback(() => {
@@ -70,6 +86,7 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
     error: voiceInput.error || llmError,
     startRecording: voiceInput.startRecording,
     stopRecordingAndParse,
+    saveParsedFood,
     cancelRecording,
     reset,
   };
