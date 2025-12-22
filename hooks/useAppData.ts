@@ -21,6 +21,9 @@ interface AppData {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  selectedDate: string;
+  changeDate: (date: string) => Promise<void>;
+  isToday: boolean;
 }
 
 /**
@@ -32,11 +35,16 @@ export function useAppData(): AppData {
   const [dailyLog, setDailyLog] = useState<DailyLog>(mockDailyLog);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
 
-  const loadData = async () => {
+  const loadData = async (date?: string) => {
     try {
       setLoading(true);
       setError(null);
+
+      const targetDate = date || selectedDate;
 
       if (USE_DATABASE) {
         // Load from database
@@ -48,8 +56,7 @@ export function useAppData(): AppData {
         const dbTargets = await getOrCreateMacroTargets(dbUser.userID);
         setTargets(dbTargets);
 
-        const today = new Date().toISOString().split('T')[0];
-        const dbDailyLog = await getOrCreateDailyLog(dbUser.userID, today);
+        const dbDailyLog = await getOrCreateDailyLog(dbUser.userID, targetDate);
         setDailyLog(dbDailyLog);
       } else {
         // Use mock data
@@ -71,9 +78,16 @@ export function useAppData(): AppData {
     }
   };
 
+  const changeDate = async (newDate: string) => {
+    setSelectedDate(newDate);
+    await loadData(newDate);
+  };
+
   useEffect(() => {
     loadData();
   }, []);
+
+  const isToday = selectedDate === new Date().toISOString().split('T')[0];
 
   return {
     user,
@@ -82,5 +96,8 @@ export function useAppData(): AppData {
     loading,
     error,
     refresh: loadData,
+    selectedDate,
+    changeDate,
+    isToday,
   };
 }

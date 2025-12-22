@@ -55,3 +55,9 @@ export interface LLMResponse {
   dinner: FoodItem[];
   snacks: FoodItem[];
 }
+
+export interface DateCalorieData {
+  date: string; // YYYY-MM-DD
+  calories: number;
+  calorieTarget: number;
+}

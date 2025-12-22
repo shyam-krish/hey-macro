@@ -6,7 +6,7 @@
 import 'react-native-get-random-values'; // Must be imported before uuid
 import * as SQLite from 'expo-sqlite';
 import { v4 as uuidv4 } from 'uuid';
-import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse } from '../types';
+import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse, DateCalorieData } from '../types';
 
 const DATABASE_NAME = 'heymacro.db';
 const DEFAULT_USER_ID = 'default-user';
@@ -308,6 +308,43 @@ export async function getOrCreateDailyLog(userID: string, date: string): Promise
     };
   } catch (error) {
     console.error('Failed to get or create daily log:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get calorie data for all dates in a specific month
+ * Used for rendering calendar view with calorie rings
+ */
+export async function getMonthCalorieData(
+  userID: string,
+  year: number,
+  month: number // 0-indexed (0 = January, 11 = December)
+): Promise<DateCalorieData[]> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    // Get the date range for the month
+    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
+    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
+    // Get macro targets for the user to get calorie target
+    const targets = await getOrCreateMacroTargets(userID);
+
+    // Query all daily logs in the date range
+    const logs = await db.getAllAsync<{ date: string; totalCalories: number }>(
+      'SELECT date, totalCalories FROM daily_logs WHERE userID = ? AND date >= ? AND date <= ? ORDER BY date ASC',
+      [userID, startDate, endDate]
+    );
+
+    // Map to DateCalorieData
+    return logs.map(log => ({
+      date: log.date,
+      calories: log.totalCalories,
+      calorieTarget: targets.calories,
+    }));
+  } catch (error) {
+    console.error('Failed to get month calorie data:', error);
     throw error;
   }
 }

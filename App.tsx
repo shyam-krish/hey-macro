@@ -15,6 +15,9 @@ import { FoodEntry } from './types';
 import { useAppData } from './hooks/useAppData';
 import { useVoiceFoodLogger } from './hooks/useVoiceFoodLogger';
 import { MealDetailSheet } from './components/MealDetailSheet';
+import { TopBar } from './components/TopBar';
+import { CalendarDropdown } from './components/CalendarDropdown';
+import { ProfileSheet } from './components/ProfileSheet';
 
 // Calorie Ring Component
 function CalorieRing({
@@ -154,8 +157,10 @@ function MealCard({
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snacks';
 
 export default function App() {
-  const { targets, dailyLog, loading, error, refresh } = useAppData();
+  const { user, targets, dailyLog, loading, error, refresh, selectedDate, changeDate } = useAppData();
   const [selectedMeal, setSelectedMeal] = useState<{ title: string; type: MealType } | null>(null);
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [profileVisible, setProfileVisible] = useState(false);
   const {
     isRecording,
     isProcessing,
@@ -204,6 +209,14 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.container}>
         <StatusBar style="light" />
+
+        {/* Top Bar with Calendar and Profile */}
+        <TopBar
+          selectedDate={selectedDate}
+          onDateChange={changeDate}
+          onCalendarPress={() => setCalendarVisible(true)}
+          onProfilePress={() => setProfileVisible(true)}
+        />
 
         {loading ? (
           <View style={styles.centerContainer}>
@@ -277,6 +290,27 @@ export default function App() {
                 onClose={() => setSelectedMeal(null)}
               />
             )}
+
+            {/* Calendar Dropdown */}
+            <CalendarDropdown
+              visible={calendarVisible}
+              onClose={() => setCalendarVisible(false)}
+              selectedDate={selectedDate}
+              onDateSelect={(date) => {
+                changeDate(date);
+                setCalendarVisible(false);
+              }}
+              userID={user?.userID || 'default-user'}
+              calorieTarget={targets?.calories || 2700}
+            />
+
+            {/* Profile Sheet */}
+            <ProfileSheet
+              visible={profileVisible}
+              onClose={() => setProfileVisible(false)}
+              user={user}
+              targets={targets}
+            />
 
             {/* Floating Action Button */}
             <View style={styles.fabContainer}>
