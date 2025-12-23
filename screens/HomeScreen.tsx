@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
@@ -289,26 +290,34 @@ export function HomeScreen() {
                 <Text style={styles.foodSectionTitle}>Food</Text>
                 {hasFood ? (
                   <>
-                    <MealCard
-                      title="Breakfast"
-                      entries={dailyLog.breakfast}
-                      onPress={() => setSelectedMeal({ title: 'Breakfast', type: 'breakfast' })}
-                    />
-                    <MealCard
-                      title="Lunch"
-                      entries={dailyLog.lunch}
-                      onPress={() => setSelectedMeal({ title: 'Lunch', type: 'lunch' })}
-                    />
-                    <MealCard
-                      title="Dinner"
-                      entries={dailyLog.dinner}
-                      onPress={() => setSelectedMeal({ title: 'Dinner', type: 'dinner' })}
-                    />
-                    <MealCard
-                      title="Snacks"
-                      entries={dailyLog.snacks}
-                      onPress={() => setSelectedMeal({ title: 'Snacks', type: 'snacks' })}
-                    />
+                    {dailyLog.breakfast.length > 0 && (
+                      <MealCard
+                        title="Breakfast"
+                        entries={dailyLog.breakfast}
+                        onPress={() => setSelectedMeal({ title: 'Breakfast', type: 'breakfast' })}
+                      />
+                    )}
+                    {dailyLog.lunch.length > 0 && (
+                      <MealCard
+                        title="Lunch"
+                        entries={dailyLog.lunch}
+                        onPress={() => setSelectedMeal({ title: 'Lunch', type: 'lunch' })}
+                      />
+                    )}
+                    {dailyLog.dinner.length > 0 && (
+                      <MealCard
+                        title="Dinner"
+                        entries={dailyLog.dinner}
+                        onPress={() => setSelectedMeal({ title: 'Dinner', type: 'dinner' })}
+                      />
+                    )}
+                    {dailyLog.snacks.length > 0 && (
+                      <MealCard
+                        title="Snacks"
+                        entries={dailyLog.snacks}
+                        onPress={() => setSelectedMeal({ title: 'Snacks', type: 'snacks' })}
+                      />
+                    )}
                     {/* Bottom padding for floating buttons */}
                     <View style={{ height: 100 }} />
                   </>
@@ -356,7 +365,10 @@ export function HomeScreen() {
           />
 
           {/* Floating Action Button */}
-          <View style={styles.fabContainer}>
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.8)']}
+            style={styles.fabContainer}
+          >
             <TouchableOpacity
               style={[
                 styles.fab,
@@ -374,7 +386,7 @@ export function HomeScreen() {
                 <Image source={require('../assets/mic.png')} style={styles.micIcon} />
               )}
             </TouchableOpacity>
-          </View>
+          </LinearGradient>
 
           {/* Voice Status Indicator */}
           {(isRecording || isProcessing || transcript) && (
@@ -547,10 +559,13 @@ const styles = StyleSheet.create({
   // Floating Action Button
   fabContainer: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 0,
     left: 0,
     right: 0,
+    height: 250,
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 50,
   },
   fab: {
     width: 80,

@@ -285,11 +285,11 @@ const styles = StyleSheet.create({
   editButton: {
     paddingHorizontal: 16,
     paddingVertical: 6,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: '#fff',
     borderRadius: 8,
   },
   editButtonText: {
-    color: '#34d399',
+    color: '#000',
     fontSize: 14,
     fontFamily: 'Avenir Next',
     fontWeight: '600',
@@ -447,13 +447,13 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     flex: 1,
-    backgroundColor: '#34d399',
+    backgroundColor: '#fff',
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
   },
   saveButtonDisabled: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#333',
   },
   saveButtonText: {
     color: '#000',
@@ -462,6 +462,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   saveButtonTextDisabled: {
-    color: '#555',
+    color: '#666',
   },
 });
