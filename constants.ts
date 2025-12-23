@@ -44,8 +44,9 @@ Each meal array contains FoodItem objects:
 - **Adding items**: Include new items alongside existing ones from "Today's food so far"
 - **Modifying items**: If the user corrects something (e.g., "actually it was 2 eggs not 3"), update that item
 - **Removing items**: If the user says they didn't eat something (e.g., "remove the toast", "I didn't have breakfast"), omit it from output
-- **Preserving items**: Items in "Today's food so far" that aren't mentioned in the transcript should be preserved unchanged
+- **Preserving items**: Items in "Today's food so far" that aren't mentioned in the transcript should be preserved unchanged with EXACTLY the same macro values shown in brackets [cal, P, C, F]. Never re-estimate macros for items the user hasn't modified.
 - If "Today's food so far" is empty, treat this as a fresh day and just add the new items
+- **Non-food input**: If the transcript doesn't contain any food-related content (e.g., "hello", "test", random words), preserve ALL existing items unchanged with their exact macro values
 
 ### Meal Type Assignment
 - If the user specifies a meal ("for breakfast", "at lunch"), use that

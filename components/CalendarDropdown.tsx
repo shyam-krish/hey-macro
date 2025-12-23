@@ -6,11 +6,10 @@ import {
   Modal,
   Pressable,
   TouchableOpacity,
-  ScrollView,
 } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { DateCalorieData } from '../types';
-import { getMonthCalorieData } from '../services/storage';
+import { getMonthCalorieData, getEarliestLogDate } from '../services/storage';
 
 interface CalendarDropdownProps {
   visible: boolean;
@@ -27,6 +26,7 @@ interface CalendarDay {
   isCurrentMonth: boolean;
   isToday: boolean;
   isSelected: boolean;
+  isFuture: boolean;
   calories: number;
   calorieTarget: number;
 }
@@ -99,29 +99,18 @@ function generateCalendarDays(
   month: number, // 0-indexed
   selectedDate: string,
   calorieData: Map<string, DateCalorieData>
-): CalendarDay[] {
+): (CalendarDay | null)[] {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
   const startDayOfWeek = firstDay.getDay(); // 0 = Sunday
   const daysInMonth = lastDay.getDate();
 
   const today = new Date().toISOString().split('T')[0];
-  const days: CalendarDay[] = [];
+  const days: (CalendarDay | null)[] = [];
 
-  // Add padding days from previous month
-  const prevMonthLastDay = new Date(year, month, 0).getDate();
-  for (let i = startDayOfWeek - 1; i >= 0; i--) {
-    const dayNumber = prevMonthLastDay - i;
-    const date = new Date(year, month - 1, dayNumber).toISOString().split('T')[0];
-    days.push({
-      date,
-      dayNumber,
-      isCurrentMonth: false,
-      isToday: date === today,
-      isSelected: date === selectedDate,
-      calories: 0,
-      calorieTarget: 0,
-    });
+  // Add empty placeholders for days before the first of the month
+  for (let i = 0; i < startDayOfWeek; i++) {
+    days.push(null);
   }
 
   // Add days of current month
@@ -134,23 +123,9 @@ function generateCalendarDays(
       isCurrentMonth: true,
       isToday: date === today,
       isSelected: date === selectedDate,
+      isFuture: date > today,
       calories: calorieInfo?.calories || 0,
       calorieTarget: calorieInfo?.calorieTarget || 2700,
-    });
-  }
-
-  // Add padding days from next month
-  const remainingDays = 42 - days.length; // 6 rows × 7 days
-  for (let day = 1; day <= remainingDays; day++) {
-    const date = new Date(year, month + 1, day).toISOString().split('T')[0];
-    days.push({
-      date,
-      dayNumber: day,
-      isCurrentMonth: false,
-      isToday: date === today,
-      isSelected: date === selectedDate,
-      calories: 0,
-      calorieTarget: 0,
     });
   }
 
@@ -171,6 +146,7 @@ export function CalendarDropdown({
     new Map()
   );
   const [loading, setLoading] = useState(false);
+  const [earliestDate, setEarliestDate] = useState<string | null>(null);
 
   // Initialize displayed month from selected date when visible
   useEffect(() => {
@@ -180,6 +156,22 @@ export function CalendarDropdown({
       setDisplayedMonth(date.getMonth());
     }
   }, [visible, selectedDate]);
+
+  // Fetch earliest date with data
+  useEffect(() => {
+    if (!visible) return;
+
+    const fetchEarliestDate = async () => {
+      try {
+        const date = await getEarliestLogDate(userID);
+        setEarliestDate(date);
+      } catch (error) {
+        console.error('Failed to fetch earliest log date:', error);
+      }
+    };
+
+    fetchEarliestDate();
+  }, [visible, userID]);
 
   // Fetch calorie data for the displayed month
   useEffect(() => {
@@ -201,13 +193,35 @@ export function CalendarDropdown({
     fetchCalorieData();
   }, [visible, userID, displayedYear, displayedMonth]);
 
+  // Check if we can navigate to previous month (must have data)
+  const canGoPrevMonth = () => {
+    if (!earliestDate) return false;
+    const earliestParsed = new Date(earliestDate);
+    const earliestYear = earliestParsed.getFullYear();
+    const earliestMonth = earliestParsed.getMonth();
+    // Can go back if we're after the earliest month
+    return displayedYear > earliestYear ||
+      (displayedYear === earliestYear && displayedMonth > earliestMonth);
+  };
+
+  // Check if we can navigate to next month (can't go past current month)
+  const canGoNextMonth = () => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    return displayedYear < currentYear ||
+      (displayedYear === currentYear && displayedMonth < currentMonth);
+  };
+
   const handlePrevMonth = () => {
+    if (!canGoPrevMonth()) return;
     const newDate = new Date(displayedYear, displayedMonth - 1, 1);
     setDisplayedYear(newDate.getFullYear());
     setDisplayedMonth(newDate.getMonth());
   };
 
   const handleNextMonth = () => {
+    if (!canGoNextMonth()) return;
     const newDate = new Date(displayedYear, displayedMonth + 1, 1);
     setDisplayedYear(newDate.getFullYear());
     setDisplayedMonth(newDate.getMonth());
@@ -254,9 +268,10 @@ export function CalendarDropdown({
             <TouchableOpacity
               style={styles.monthNavButton}
               onPress={handlePrevMonth}
-              activeOpacity={0.7}
+              activeOpacity={canGoPrevMonth() ? 0.7 : 1}
+              disabled={!canGoPrevMonth()}
             >
-              <Text style={styles.monthNavArrow}>‹</Text>
+              <Text style={[styles.monthNavArrow, !canGoPrevMonth() && styles.monthNavArrowDisabled]}>‹</Text>
             </TouchableOpacity>
 
             <Text style={styles.monthTitle}>
@@ -266,9 +281,10 @@ export function CalendarDropdown({
             <TouchableOpacity
               style={styles.monthNavButton}
               onPress={handleNextMonth}
-              activeOpacity={0.7}
+              activeOpacity={canGoNextMonth() ? 0.7 : 1}
+              disabled={!canGoNextMonth()}
             >
-              <Text style={styles.monthNavArrow}>›</Text>
+              <Text style={[styles.monthNavArrow, !canGoNextMonth() && styles.monthNavArrowDisabled]}>›</Text>
             </TouchableOpacity>
           </View>
 
@@ -282,45 +298,53 @@ export function CalendarDropdown({
           </View>
 
           {/* Calendar Grid */}
-          <ScrollView
-            style={styles.calendarScroll}
-            contentContainerStyle={styles.calendarGrid}
-            showsVerticalScrollIndicator={false}
-          >
-            {calendarDays.map((day, index) => (
-              <TouchableOpacity
-                key={`${day.date}-${index}`}
-                style={[
-                  styles.dayCell,
-                  day.isSelected && styles.dayCellSelected,
-                  day.isToday && !day.isSelected && styles.dayCellToday,
-                ]}
-                onPress={() => {
-                  onDateSelect(day.date);
-                }}
-                activeOpacity={0.7}
-              >
-                {day.isCurrentMonth && day.calories > 0 && (
-                  <CalorieRing
-                    calories={day.calories}
-                    target={day.calorieTarget}
-                    size={32}
-                    isToday={day.isToday}
-                  />
-                )}
-                <Text
+          <View style={styles.calendarGrid}>
+            {calendarDays.map((day, index) => {
+              // Empty placeholder for days before the first of month
+              if (day === null) {
+                return <View key={`empty-${index}`} style={styles.dayCell} />;
+              }
+
+              const isDisabled = day.isFuture;
+
+              return (
+                <TouchableOpacity
+                  key={`${day.date}-${index}`}
                   style={[
-                    styles.dayNumber,
-                    !day.isCurrentMonth && styles.dayNumberGrayed,
-                    day.isSelected && styles.dayNumberSelected,
-                    day.isToday && !day.isSelected && styles.dayNumberToday,
+                    styles.dayCell,
+                    day.isSelected && styles.dayCellSelected,
+                    day.isToday && !day.isSelected && styles.dayCellToday,
                   ]}
+                  onPress={() => {
+                    if (!isDisabled) {
+                      onDateSelect(day.date);
+                    }
+                  }}
+                  activeOpacity={isDisabled ? 1 : 0.7}
+                  disabled={isDisabled}
                 >
-                  {day.dayNumber}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+                  {day.calories > 0 && (
+                    <CalorieRing
+                      calories={day.calories}
+                      target={day.calorieTarget}
+                      size={32}
+                      isToday={day.isToday}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.dayNumber,
+                      isDisabled && styles.dayNumberDisabled,
+                      day.isSelected && styles.dayNumberSelected,
+                      day.isToday && !day.isSelected && styles.dayNumberToday,
+                    ]}
+                  >
+                    {day.dayNumber}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
@@ -362,6 +386,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Avenir Next',
     fontWeight: '300',
   },
+  monthNavArrowDisabled: {
+    color: '#222',
+  },
   monthTitle: {
     color: '#fff',
     fontSize: 16,
@@ -384,9 +411,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textTransform: 'uppercase',
   },
-  calendarScroll: {
-    maxHeight: 320,
-  },
   calendarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -406,7 +430,7 @@ const styles = StyleSheet.create({
   dayCellToday: {
     borderWidth: 1,
     borderColor: '#333',
-    borderRadius: 16,
+    borderRadius: 0,
   },
   dayNumber: {
     color: '#fff',
@@ -415,7 +439,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     zIndex: 1,
   },
-  dayNumberGrayed: {
+  dayNumberDisabled: {
     color: '#333',
   },
   dayNumberSelected: {

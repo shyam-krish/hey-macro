@@ -66,6 +66,9 @@ export async function parseFoodInput({
       maxTokens: 2000,
     });
 
+    console.log('[LLM] Transcript:', transcript);
+    console.log('[LLM] Response:', JSON.stringify(result, null, 2));
+
     // Validate and normalize the response
     return validateAndNormalizeLLMResponse(result);
   } catch (error) {
@@ -76,19 +79,23 @@ export async function parseFoodInput({
   }
 }
 
+function formatFoodItem(f: { name: string; quantity: string; calories: number; protein: number; carbs: number; fat: number }): string {
+  return `${f.name} (${f.quantity}) [${f.calories} cal, ${f.protein}g P, ${f.carbs}g C, ${f.fat}g F]`;
+}
+
 function formatMealsFromLog(log: DailyLog): string[] {
   const meals: string[] = [];
   if (log.breakfast.length > 0) {
-    meals.push(`Breakfast: ${log.breakfast.map((f) => `${f.name} (${f.quantity})`).join(', ')}`);
+    meals.push(`Breakfast: ${log.breakfast.map(formatFoodItem).join(', ')}`);
   }
   if (log.lunch.length > 0) {
-    meals.push(`Lunch: ${log.lunch.map((f) => `${f.name} (${f.quantity})`).join(', ')}`);
+    meals.push(`Lunch: ${log.lunch.map(formatFoodItem).join(', ')}`);
   }
   if (log.dinner.length > 0) {
-    meals.push(`Dinner: ${log.dinner.map((f) => `${f.name} (${f.quantity})`).join(', ')}`);
+    meals.push(`Dinner: ${log.dinner.map(formatFoodItem).join(', ')}`);
   }
   if (log.snacks.length > 0) {
-    meals.push(`Snacks: ${log.snacks.map((f) => `${f.name} (${f.quantity})`).join(', ')}`);
+    meals.push(`Snacks: ${log.snacks.map(formatFoodItem).join(', ')}`);
   }
   return meals;
 }

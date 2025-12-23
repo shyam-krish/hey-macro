@@ -17,11 +17,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
-import { FoodEntry } from '../types';
+import { FoodEntry, DailyLog } from '../types';
 import { useAppDataContext } from '../contexts/AppDataContext';
 import { useVoiceFoodLogger } from '../hooks/useVoiceFoodLogger';
 import { parseFoodInput } from '../services/llm';
-import { replaceDailyFoodEntries } from '../services/storage';
+import { replaceDailyFoodEntries, getPreviousDaysLogs } from '../services/storage';
 import { LLMResponse } from '../types';
 import { MealDetailSheet } from '../components/MealDetailSheet';
 import { TopBar } from '../components/TopBar';
@@ -196,6 +196,7 @@ export function HomeScreen() {
   const [isTextProcessing, setIsTextProcessing] = useState(false);
   const [textParsedFood, setTextParsedFood] = useState<LLMResponse | null>(null);
   const [textError, setTextError] = useState<string | null>(null);
+  const [previousDayLogs, setPreviousDayLogs] = useState<DailyLog[]>([]);
   const {
     isRecording,
     isProcessing,
@@ -208,10 +209,22 @@ export function HomeScreen() {
     reset,
   } = useVoiceFoodLogger();
 
+  // Fetch previous 7 days of logs for LLM context
+  useEffect(() => {
+    if (!user) return;
+
+    getPreviousDaysLogs(user.userID, 7)
+      .then(setPreviousDayLogs)
+      .catch((err) => console.error('Failed to fetch previous logs:', err));
+  }, [user]);
+
   const handleMicPress = async () => {
     if (isRecording) {
-      // Stop recording and parse with today's log for updates
-      await stopRecordingAndParse({ todayLog: dailyLog ?? undefined });
+      // Stop recording and parse with today's log and previous days for context
+      await stopRecordingAndParse({
+        todayLog: dailyLog ?? undefined,
+        previousDayLogs: previousDayLogs.length > 0 ? previousDayLogs : undefined,
+      });
     } else {
       // Start recording
       await startRecording();
@@ -230,6 +243,7 @@ export function HomeScreen() {
         transcript: textInput.trim(),
         currentTime: new Date(),
         todayLog: dailyLog,
+        previousDayLogs: previousDayLogs.length > 0 ? previousDayLogs : undefined,
       });
       setTextParsedFood(result);
       setTextInput('');
@@ -427,10 +441,11 @@ export function HomeScreen() {
             colors={['transparent', 'rgba(0,0,0,0.8)']}
             style={styles.fabContainer}
           >
-            {/* Text Input Button */}
+            {/* Text Input Button (Secondary) */}
             <TouchableOpacity
               style={[
                 styles.fab,
+                styles.fabSecondary,
                 isTextProcessing && styles.fabProcessing,
               ]}
               onPress={() => setTextInputVisible(true)}
@@ -443,7 +458,7 @@ export function HomeScreen() {
               )}
             </TouchableOpacity>
 
-            {/* Mic Button */}
+            {/* Mic Button (Primary) */}
             <TouchableOpacity
               style={[
                 styles.fab,
@@ -456,7 +471,7 @@ export function HomeScreen() {
               {isProcessing ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : isRecording ? (
-                <View style={styles.stopIcon} />
+                <View style={[styles.stopIcon, { backgroundColor: '#fff' }]} />
               ) : (
                 <Image source={require('../assets/mic.png')} style={styles.micIcon} />
               )}
@@ -694,7 +709,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 250,
+    height: 280,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
@@ -705,36 +720,51 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1,
-    borderColor: '#333',
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    // Subtle glow for primary button
+    shadowColor: '#fff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  fabSecondary: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1.5,
+    borderColor: '#444',
+    // No shadow for secondary
+    shadowOpacity: 0,
+    elevation: 0,
   },
   fabText: {
-    color: '#fff',
-    fontSize: 20,
+    color: '#888',
+    fontSize: 18,
     fontFamily: 'Avenir Next',
     fontWeight: '600',
   },
   micIcon: {
     width: 28,
     height: 28,
-    tintColor: '#fff',
+    tintColor: '#000',
   },
   stopIcon: {
     width: 18,
     height: 18,
-    backgroundColor: '#fff',
+    backgroundColor: '#000',
     borderRadius: 4,
   },
   fabRecording: {
     backgroundColor: '#ff4444',
-    borderColor: '#ff6666',
+    shadowColor: '#ff4444',
   },
   fabProcessing: {
     backgroundColor: '#4444ff',
-    borderColor: '#6666ff',
+    shadowColor: '#4444ff',
   },
 
   // Voice Status

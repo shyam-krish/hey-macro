@@ -410,6 +410,25 @@ export async function getMonthCalorieData(
 }
 
 /**
+ * Get the earliest date with data for a user
+ * Returns null if no data exists
+ */
+export async function getEarliestLogDate(userID: string): Promise<string | null> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const result = await db.getFirstAsync<{ date: string }>(
+      'SELECT MIN(date) as date FROM daily_logs WHERE userID = ?',
+      [userID]
+    );
+    return result?.date || null;
+  } catch (error) {
+    console.error('Failed to get earliest log date:', error);
+    throw error;
+  }
+}
+
+/**
  * Add a food entry to a daily log
  */
 export async function addFoodEntry(
@@ -499,6 +518,44 @@ export async function deleteFoodEntry(foodEntryID: string): Promise<void> {
     await db.runAsync('DELETE FROM food_entries WHERE foodEntryID = ?', [foodEntryID]);
   } catch (error) {
     console.error('Failed to delete food entry:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get the last N days of logs (excluding today), filtering out empty days
+ * Returns logs sorted by date descending (most recent first)
+ */
+export async function getPreviousDaysLogs(
+  userID: string,
+  days: number = 7
+): Promise<DailyLog[]> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const today = getTodayDate();
+
+    // Get logs from the last N days that have food entries
+    const logs = await db.getAllAsync<{ dailyLogID: string; date: string }>(
+      `SELECT DISTINCT dl.dailyLogID, dl.date
+       FROM daily_logs dl
+       INNER JOIN food_entries fe ON fe.dailyLogID = dl.dailyLogID
+       WHERE dl.userID = ? AND dl.date < ?
+       ORDER BY dl.date DESC
+       LIMIT ?`,
+      [userID, today, days]
+    );
+
+    // Fetch full log data for each
+    const fullLogs: DailyLog[] = [];
+    for (const log of logs) {
+      const fullLog = await getOrCreateDailyLog(userID, log.date);
+      fullLogs.push(fullLog);
+    }
+
+    return fullLogs;
+  } catch (error) {
+    console.error('Failed to get previous days logs:', error);
     throw error;
   }
 }
