@@ -25,16 +25,36 @@ function CalorieRing({
   current,
   target,
   size = 120,
+  isToday = true,
 }: {
   current: number;
   target: number;
   size?: number;
+  isToday?: boolean;
 }) {
   const strokeWidth = 10;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = Math.min(current / target, 1);
   const strokeDashoffset = circumference * (1 - progress);
+
+  // Calculate ring color based on calorie difference
+  const getCalorieRingColor = () => {
+    const diff = current - target;
+
+    if (isToday) {
+      // Today: neutral until 150+ over target, then dark red
+      return diff > 150 ? '#991b1b' : '#a3a3a3';
+    } else {
+      // Past days: color based on how close to target (dark shades)
+      const absDiff = Math.abs(diff);
+      if (absDiff <= 150) return '#065f46'; // Dark green - nailed it
+      if (absDiff <= 300) return '#92400e'; // Dark amber - close enough
+      return '#991b1b'; // Dark red - significantly off
+    }
+  };
+
+  const ringColor = getCalorieRingColor();
 
   return (
     <View
@@ -55,7 +75,7 @@ function CalorieRing({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="#34d399"
+          stroke={ringColor}
           strokeWidth={strokeWidth}
           fill="transparent"
           strokeDasharray={circumference}
@@ -232,7 +252,11 @@ export function HomeScreen() {
         <>
           {/* Macro Summary Section */}
           <View style={styles.summarySection}>
-            <CalorieRing current={dailyLog.totalCalories} target={dailyLog.targetCalories} />
+            <CalorieRing
+              current={dailyLog.totalCalories}
+              target={dailyLog.targetCalories}
+              isToday={selectedDate === new Date().toISOString().split('T')[0]}
+            />
             <View style={styles.macroProgressBars}>
               <MacroProgressBar
                 label="Protein"
@@ -452,7 +476,7 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#065f46',
+    backgroundColor: '#fff',
     borderRadius: 4,
   },
 
@@ -517,7 +541,7 @@ const styles = StyleSheet.create({
     fontFamily: 'DIN Alternate',
   },
   mealTotalUnit: {
-    color: '#065f46',
+    color: '#a3a3a3',
   },
 
   // Floating Action Button
