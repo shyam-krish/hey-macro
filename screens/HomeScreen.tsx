@@ -8,6 +8,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +20,9 @@ import { useNavigation } from '@react-navigation/native';
 import { FoodEntry } from '../types';
 import { useAppDataContext } from '../contexts/AppDataContext';
 import { useVoiceFoodLogger } from '../hooks/useVoiceFoodLogger';
+import { parseFoodInput } from '../services/llm';
+import { replaceDailyFoodEntries } from '../services/storage';
+import { LLMResponse } from '../types';
 import { MealDetailSheet } from '../components/MealDetailSheet';
 import { TopBar } from '../components/TopBar';
 import { CalendarDropdown } from '../components/CalendarDropdown';
@@ -184,6 +191,11 @@ export function HomeScreen() {
     null
   );
   const [calendarVisible, setCalendarVisible] = useState(false);
+  const [textInputVisible, setTextInputVisible] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const [isTextProcessing, setIsTextProcessing] = useState(false);
+  const [textParsedFood, setTextParsedFood] = useState<LLMResponse | null>(null);
+  const [textError, setTextError] = useState<string | null>(null);
   const {
     isRecording,
     isProcessing,
@@ -206,7 +218,30 @@ export function HomeScreen() {
     }
   };
 
-  // Save parsed food to database when available
+  const handleTextSubmit = async () => {
+    if (!textInput.trim() || !dailyLog) return;
+
+    setTextInputVisible(false);
+    setIsTextProcessing(true);
+    setTextError(null);
+
+    try {
+      const result = await parseFoodInput({
+        transcript: textInput.trim(),
+        currentTime: new Date(),
+        todayLog: dailyLog,
+      });
+      setTextParsedFood(result);
+      setTextInput('');
+    } catch (err) {
+      console.error('Error parsing text input:', err);
+      setTextError(err instanceof Error ? err.message : 'Failed to parse food input');
+    } finally {
+      setIsTextProcessing(false);
+    }
+  };
+
+  // Save parsed food from voice to database when available
   useEffect(() => {
     if (!parsedFood || !dailyLog) return;
 
@@ -227,6 +262,29 @@ export function HomeScreen() {
       cancelled = true;
     };
   }, [parsedFood]);
+
+  // Save parsed food from text input to database when available
+  useEffect(() => {
+    if (!textParsedFood || !dailyLog) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await replaceDailyFoodEntries('default-user', dailyLog.dailyLogID, textParsedFood);
+        if (cancelled) return;
+        setTextParsedFood(null);
+        await refresh();
+      } catch (err) {
+        console.error('Error saving text food:', err);
+        setTextError(err instanceof Error ? err.message : 'Failed to save food');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [textParsedFood]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -364,11 +422,28 @@ export function HomeScreen() {
             calorieTarget={targets?.calories || 2700}
           />
 
-          {/* Floating Action Button */}
+          {/* Floating Action Buttons */}
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.8)']}
             style={styles.fabContainer}
           >
+            {/* Text Input Button */}
+            <TouchableOpacity
+              style={[
+                styles.fab,
+                isTextProcessing && styles.fabProcessing,
+              ]}
+              onPress={() => setTextInputVisible(true)}
+              disabled={isProcessing || isRecording || isTextProcessing}
+            >
+              {isTextProcessing ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.fabText}>Aa</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Mic Button */}
             <TouchableOpacity
               style={[
                 styles.fab,
@@ -376,10 +451,10 @@ export function HomeScreen() {
                 isProcessing && styles.fabProcessing,
               ]}
               onPress={handleMicPress}
-              disabled={isProcessing}
+              disabled={isProcessing || isTextProcessing}
             >
               {isProcessing ? (
-                <ActivityIndicator size="large" color="#fff" />
+                <ActivityIndicator size="small" color="#fff" />
               ) : isRecording ? (
                 <View style={styles.stopIcon} />
               ) : (
@@ -388,17 +463,72 @@ export function HomeScreen() {
             </TouchableOpacity>
           </LinearGradient>
 
-          {/* Voice Status Indicator */}
-          {(isRecording || isProcessing || transcript) && (
+          {/* Status Indicator */}
+          {(isRecording || isProcessing || isTextProcessing || transcript || textError) && (
             <View style={styles.voiceStatusContainer}>
               {isRecording && <Text style={styles.voiceStatusText}>Listening...</Text>}
-              {isProcessing && <Text style={styles.voiceStatusText}>Analyzing...</Text>}
+              {(isProcessing || isTextProcessing) && <Text style={styles.voiceStatusText}>Analyzing...</Text>}
               {transcript && !isProcessing && (
                 <Text style={styles.voiceTranscript}>"{transcript}"</Text>
               )}
               {voiceError && <Text style={styles.voiceErrorText}>{voiceError}</Text>}
+              {textError && <Text style={styles.voiceErrorText}>{textError}</Text>}
             </View>
           )}
+
+          {/* Text Input Bottom Sheet */}
+          <Modal
+            visible={textInputVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setTextInputVisible(false)}
+          >
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalOverlay}
+            >
+              <TouchableOpacity
+                style={styles.modalBackdrop}
+                activeOpacity={1}
+                onPress={() => setTextInputVisible(false)}
+              />
+              <View style={styles.bottomSheet}>
+                <View style={styles.bottomSheetHandle} />
+                <TextInput
+                  style={styles.textInputField}
+                  placeholder="What did you eat?"
+                  placeholderTextColor="#666"
+                  value={textInput}
+                  onChangeText={setTextInput}
+                  multiline
+                  autoFocus
+                  returnKeyType="done"
+                  blurOnSubmit
+                />
+                <View style={styles.bottomSheetButtons}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={() => {
+                      setTextInput('');
+                      setTextInputVisible(false);
+                    }}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.submitButton,
+                      !textInput.trim() && styles.submitButtonDisabled,
+                    ]}
+                    onPress={handleTextSubmit}
+                    disabled={!textInput.trim()}
+                  >
+                    <Text style={styles.submitButtonText}>Log Food</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </Modal>
         </>
       )}
     </SafeAreaView>
@@ -558,35 +688,43 @@ const styles = StyleSheet.create({
     color: '#a3a3a3',
   },
 
-  // Floating Action Button
+  // Floating Action Buttons
   fabContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     height: 250,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
     paddingBottom: 50,
+    paddingHorizontal: 40,
   },
   fab: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: '#1a1a1a',
     borderWidth: 1,
     borderColor: '#333',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  fabText: {
+    color: '#fff',
+    fontSize: 20,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
+  },
   micIcon: {
-    width: 36,
-    height: 36,
+    width: 28,
+    height: 28,
     tintColor: '#fff',
   },
   stopIcon: {
-    width: 24,
-    height: 24,
+    width: 18,
+    height: 18,
     backgroundColor: '#fff',
     borderRadius: 4,
   },
@@ -648,5 +786,74 @@ const styles = StyleSheet.create({
     color: '#444',
     fontSize: 14,
     fontFamily: 'Avenir Next',
+  },
+
+  // Text Input Bottom Sheet
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  bottomSheet: {
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  bottomSheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#444',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  textInputField: {
+    backgroundColor: '#252525',
+    borderRadius: 12,
+    padding: 16,
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'Avenir Next',
+    minHeight: 100,
+    textAlignVertical: 'top',
+    marginBottom: 20,
+  },
+  bottomSheetButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#252525',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#888',
+    fontSize: 16,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
+  },
+  submitButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#444',
+  },
+  submitButtonText: {
+    color: '#000',
+    fontSize: 16,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
   },
 });
