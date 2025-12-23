@@ -5,6 +5,7 @@ import {
   getOrCreateDefaultUser,
   getOrCreateMacroTargets,
   getOrCreateDailyLog,
+  updateMacroTargets,
 } from '../services/storage';
 import { mockTargets, mockDailyLog } from '../constants';
 
@@ -24,6 +25,9 @@ interface AppData {
   selectedDate: string;
   changeDate: (date: string) => Promise<void>;
   isToday: boolean;
+  updateTargets: (
+    newTargets: Omit<MacroTargets, 'createdAt' | 'updatedAt'>
+  ) => Promise<void>;
 }
 
 /**
@@ -83,6 +87,42 @@ export function useAppData(): AppData {
     await loadData(newDate);
   };
 
+  const updateTargetsHandler = async (
+    newTargets: Omit<MacroTargets, 'createdAt' | 'updatedAt'>
+  ) => {
+    try {
+      if (USE_DATABASE) {
+        const updated = await updateMacroTargets(newTargets);
+        setTargets(updated);
+
+        // Refresh daily log to get updated targets (updateMacroTargets also updates today's log)
+        const today = new Date().toISOString().split('T')[0];
+        if (selectedDate === today && user) {
+          const refreshedLog = await getOrCreateDailyLog(user.userID, selectedDate);
+          setDailyLog(refreshedLog);
+        }
+      } else {
+        // Mock mode: just update state
+        setTargets({
+          ...newTargets,
+          createdAt: targets.createdAt,
+          updatedAt: new Date().toISOString(),
+        });
+        // Also update dailyLog targets in mock mode
+        setDailyLog({
+          ...dailyLog,
+          targetCalories: newTargets.calories,
+          targetProtein: newTargets.protein,
+          targetCarbs: newTargets.carbs,
+          targetFat: newTargets.fat,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to update targets:', err);
+      throw err;
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -99,5 +139,6 @@ export function useAppData(): AppData {
     selectedDate,
     changeDate,
     isToday,
+    updateTargets: updateTargetsHandler,
   };
 }

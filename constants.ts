@@ -176,6 +176,10 @@ export const mockDailyLog: DailyLog = {
   totalProtein: 130,
   totalCarbs: 220,
   totalFat: 50,
+  targetCalories: 2700,
+  targetProtein: 150,
+  targetCarbs: 300,
+  targetFat: 90,
   breakfast: [
     {
       foodEntryID: '1',

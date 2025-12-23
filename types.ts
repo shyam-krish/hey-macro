@@ -33,6 +33,11 @@ export interface DailyLog extends BaseEntity {
   totalProtein: number;
   totalCarbs: number;
   totalFat: number;
+  // Per-day targets (snapshot of targets when log was created)
+  targetCalories: number;
+  targetProtein: number;
+  targetCarbs: number;
+  targetFat: number;
   breakfast: FoodEntry[];
   lunch: FoodEntry[];
   dinner: FoodEntry[];

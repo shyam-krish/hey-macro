@@ -102,8 +102,40 @@ export async function initDatabase(): Promise<void> {
     `);
 
     console.log('Database initialized successfully');
+
+    // Run migrations
+    await runMigrations();
   } catch (error) {
     console.error('Failed to initialize database:', error);
+    throw error;
+  }
+}
+
+/**
+ * Run database migrations
+ */
+async function runMigrations(): Promise<void> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    // Check if target columns exist in daily_logs
+    const tableInfo = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(daily_logs)'
+    );
+    const columnNames = tableInfo.map((col) => col.name);
+
+    if (!columnNames.includes('targetCalories')) {
+      console.log('Running migration: Adding target columns to daily_logs');
+      await db.execAsync(`
+        ALTER TABLE daily_logs ADD COLUMN targetCalories INTEGER DEFAULT 2700;
+        ALTER TABLE daily_logs ADD COLUMN targetProtein INTEGER DEFAULT 150;
+        ALTER TABLE daily_logs ADD COLUMN targetCarbs INTEGER DEFAULT 300;
+        ALTER TABLE daily_logs ADD COLUMN targetFat INTEGER DEFAULT 90;
+      `);
+      console.log('Migration complete: Added target columns');
+    }
+  } catch (error) {
+    console.error('Migration failed:', error);
     throw error;
   }
 }
@@ -187,6 +219,7 @@ export async function getOrCreateMacroTargets(userID: string): Promise<MacroTarg
 
 /**
  * Update macro targets
+ * Also updates today's daily log targets so changes reflect immediately
  */
 export async function updateMacroTargets(
   targets: Omit<MacroTargets, 'createdAt' | 'updatedAt'>
@@ -195,14 +228,23 @@ export async function updateMacroTargets(
 
   try {
     const now = getCurrentTimestamp();
+    const today = getTodayDate();
+
     const existing = await db.getFirstAsync<MacroTargets>(
       'SELECT * FROM macro_targets WHERE userID = ?',
       [targets.userID]
     );
 
+    // Update global macro targets
     await db.runAsync(
       'UPDATE macro_targets SET calories = ?, protein = ?, carbs = ?, fat = ?, updatedAt = ? WHERE userID = ?',
       [targets.calories, targets.protein, targets.carbs, targets.fat, now, targets.userID]
+    );
+
+    // Also update today's daily log targets (if it exists)
+    await db.runAsync(
+      'UPDATE daily_logs SET targetCalories = ?, targetProtein = ?, targetCarbs = ?, targetFat = ?, updatedAt = ? WHERE userID = ? AND date = ?',
+      [targets.calories, targets.protein, targets.carbs, targets.fat, now, targets.userID, today]
     );
 
     return {
@@ -231,19 +273,35 @@ export async function getOrCreateDailyLog(userID: string, date: string): Promise
 
     let dailyLogID: string;
     let createdAt: string;
+    let targetCalories: number;
+    let targetProtein: number;
+    let targetCarbs: number;
+    let targetFat: number;
 
     if (!log) {
-      // Create new log
+      // Create new log with current macro targets
       dailyLogID = uuidv4();
       const now = getCurrentTimestamp();
       createdAt = now;
+
+      // Get current targets to snapshot for this day
+      const targets = await getOrCreateMacroTargets(userID);
+      targetCalories = targets.calories;
+      targetProtein = targets.protein;
+      targetCarbs = targets.carbs;
+      targetFat = targets.fat;
+
       await db.runAsync(
-        'INSERT INTO daily_logs (dailyLogID, userID, date, totalCalories, totalProtein, totalCarbs, totalFat, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [dailyLogID, userID, date, 0, 0, 0, 0, now, now]
+        'INSERT INTO daily_logs (dailyLogID, userID, date, totalCalories, totalProtein, totalCarbs, totalFat, targetCalories, targetProtein, targetCarbs, targetFat, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [dailyLogID, userID, date, 0, 0, 0, 0, targetCalories, targetProtein, targetCarbs, targetFat, now, now]
       );
     } else {
       dailyLogID = log.dailyLogID;
       createdAt = log.createdAt;
+      targetCalories = log.targetCalories;
+      targetProtein = log.targetProtein;
+      targetCarbs = log.targetCarbs;
+      targetFat = log.targetFat;
     }
 
     // Get all food entries for this log
@@ -299,6 +357,10 @@ export async function getOrCreateDailyLog(userID: string, date: string): Promise
       totalProtein,
       totalCarbs,
       totalFat,
+      targetCalories,
+      targetProtein,
+      targetCarbs,
+      targetFat,
       breakfast,
       lunch,
       dinner,
@@ -315,6 +377,7 @@ export async function getOrCreateDailyLog(userID: string, date: string): Promise
 /**
  * Get calorie data for all dates in a specific month
  * Used for rendering calendar view with calorie rings
+ * Uses per-day targets stored in daily_logs
  */
 export async function getMonthCalorieData(
   userID: string,
@@ -328,20 +391,17 @@ export async function getMonthCalorieData(
     const startDate = new Date(year, month, 1).toISOString().split('T')[0];
     const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
 
-    // Get macro targets for the user to get calorie target
-    const targets = await getOrCreateMacroTargets(userID);
-
-    // Query all daily logs in the date range
-    const logs = await db.getAllAsync<{ date: string; totalCalories: number }>(
-      'SELECT date, totalCalories FROM daily_logs WHERE userID = ? AND date >= ? AND date <= ? ORDER BY date ASC',
+    // Query all daily logs in the date range with their per-day targets
+    const logs = await db.getAllAsync<{ date: string; totalCalories: number; targetCalories: number }>(
+      'SELECT date, totalCalories, targetCalories FROM daily_logs WHERE userID = ? AND date >= ? AND date <= ? ORDER BY date ASC',
       [userID, startDate, endDate]
     );
 
-    // Map to DateCalorieData
+    // Map to DateCalorieData using per-day targets
     return logs.map(log => ({
       date: log.date,
       calories: log.totalCalories,
-      calorieTarget: targets.calories,
+      calorieTarget: log.targetCalories,
     }));
   } catch (error) {
     console.error('Failed to get month calorie data:', error);
