@@ -11,6 +11,9 @@ import Svg, { Circle } from 'react-native-svg';
 import { DateCalorieData } from '../types';
 import { getMonthCalorieData, getEarliestLogDate } from '../services/storage';
 
+// Accent color
+const ACCENT_COLOR = '#3FE0DB';
+
 interface CalendarDropdownProps {
   visible: boolean;
   onClose: () => void;
@@ -53,8 +56,8 @@ function CalorieRing({
     const diff = calories - target;
 
     if (isToday) {
-      // Today: neutral until 150+ over target, then dark red
-      return diff > 150 ? '#991b1b' : '#a3a3a3';
+      // Today: turquoise accent until 150+ over target, then dark red
+      return diff > 150 ? '#991b1b' : ACCENT_COLOR;
     } else {
       // Past days: color based on how close to target (dark shades)
       const absDiff = Math.abs(diff);
@@ -105,7 +108,8 @@ function generateCalendarDays(
   const startDayOfWeek = firstDay.getDay(); // 0 = Sunday
   const daysInMonth = lastDay.getDate();
 
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const days: (CalendarDay | null)[] = [];
 
   // Add empty placeholders for days before the first of the month
@@ -115,7 +119,7 @@ function generateCalendarDays(
 
   // Add days of current month
   for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(year, month, day).toISOString().split('T')[0];
+    const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const calorieInfo = calorieData.get(date);
     days.push({
       date,
@@ -428,9 +432,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   dayCellToday: {
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 0,
+    borderWidth: 1.5,
+    borderColor: ACCENT_COLOR,
+    borderRadius: 16,
   },
   dayNumber: {
     color: '#fff',
@@ -446,6 +450,6 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   dayNumberToday: {
-    color: '#fff',
+    color: ACCENT_COLOR,
   },
 });

@@ -28,6 +28,9 @@ import { TopBar } from '../components/TopBar';
 import { CalendarDropdown } from '../components/CalendarDropdown';
 import { HomeScreenNavigationProp } from '../navigation/types';
 
+// Accent color
+const ACCENT_COLOR = '#3FE0DB';
+
 // Calorie Ring Component
 function CalorieRing({
   current,
@@ -51,10 +54,10 @@ function CalorieRing({
     const diff = current - target;
 
     if (isToday) {
-      // Today: neutral until 150+ over target, then dark red
-      return diff > 150 ? '#991b1b' : '#a3a3a3';
+      // Today: turquoise accent until 150+ over target, then dark red
+      return diff > 150 ? '#991b1b' : ACCENT_COLOR;
     } else {
-      // Past days: color based on how close to target (dark shades)
+      // Past days: color based on how close to target
       const absDiff = Math.abs(diff);
       if (absDiff <= 150) return '#065f46'; // Dark green - nailed it
       if (absDiff <= 300) return '#92400e'; // Dark amber - close enough
@@ -328,7 +331,11 @@ export function HomeScreen() {
             <CalorieRing
               current={dailyLog.totalCalories}
               target={dailyLog.targetCalories}
-              isToday={selectedDate === new Date().toISOString().split('T')[0]}
+              isToday={(() => {
+                const now = new Date();
+                const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                return selectedDate === localToday;
+              })()}
             />
             <View style={styles.macroProgressBars}>
               <MacroProgressBar
@@ -440,6 +447,7 @@ export function HomeScreen() {
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.8)']}
             style={styles.fabContainer}
+            pointerEvents="box-none"
           >
             {/* Text Input Button (Secondary) */}
             <TouchableOpacity
@@ -678,7 +686,7 @@ const styles = StyleSheet.create({
   },
   mealItemContainer: {
     borderLeftWidth: 2,
-    borderLeftColor: '#666',
+    borderLeftColor: ACCENT_COLOR,
     paddingLeft: 12,
   },
   mealItem: {
@@ -720,13 +728,13 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#fff',
+    backgroundColor: ACCENT_COLOR,
     alignItems: 'center',
     justifyContent: 'center',
     // Subtle glow for primary button
-    shadowColor: '#fff',
+    shadowColor: ACCENT_COLOR,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.3,
     shadowRadius: 20,
     elevation: 8,
   },
