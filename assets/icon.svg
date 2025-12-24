@@ -1,0 +1,6 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <path width="200" height="200" fill="#000000" d="M0 0H1024V1024H0V0z"/>
+  <path cx="100" cy="100" r="70" fill="none" stroke="#222222" stroke-width="61.44" d="M870.4 512A358.4 358.4 0 0 1 512 870.4A358.4 358.4 0 0 1 153.6 512A358.4 358.4 0 0 1 870.4 512z"/>
+  <path d="M512 153.6a358.4 358.4 0 1 1 -358.4 358.4" fill="none" stroke="#3FE0DB" stroke-width="61.44" stroke-linecap="round"/>
+  <text x="512" y="512" text-anchor="middle" dominant-baseline="central" font-family="'Avenir Next', 'Avenir', sans-serif" font-size="250" font-weight="200" fill="#FFFFFF" letter-spacing="2">HM</text>
+</svg>

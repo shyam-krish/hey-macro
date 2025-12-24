@@ -4,9 +4,9 @@ import { LLMConfig, LLMProvider, LLMMessage, ReasoningEffort } from './llmTypes'
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 
-if (!GEMINI_API_KEY) {
-  console.warn('GEMINI_API_KEY not found in environment variables');
-}
+// if (!GEMINI_API_KEY) {
+//   console.warn('GEMINI_API_KEY not found in environment variables');
+// }
 
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY || '' });
 
