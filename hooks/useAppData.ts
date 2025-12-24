@@ -9,6 +9,14 @@ import {
 } from '../services/storage';
 import { mockTargets, mockDailyLog } from '../constants';
 
+/** Get local date string in YYYY-MM-DD format (avoids UTC timezone issues) */
+const getLocalDateString = (date: Date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 // ==========================================
 // TOGGLE: Set to true to use database, false to use mock data
 // ==========================================
@@ -39,9 +47,7 @@ export function useAppData(): AppData {
   const [dailyLog, setDailyLog] = useState<DailyLog>(mockDailyLog);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString());
 
   const loadData = async (date?: string) => {
     try {
@@ -96,7 +102,7 @@ export function useAppData(): AppData {
         setTargets(updated);
 
         // Refresh daily log to get updated targets (updateMacroTargets also updates today's log)
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDateString();
         if (selectedDate === today && user) {
           const refreshedLog = await getOrCreateDailyLog(user.userID, selectedDate);
           setDailyLog(refreshedLog);
@@ -127,7 +133,7 @@ export function useAppData(): AppData {
     loadData();
   }, []);
 
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+  const isToday = selectedDate === getLocalDateString();
 
   return {
     user,

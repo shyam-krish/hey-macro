@@ -23,11 +23,20 @@ function getCurrentTimestamp(): string {
 }
 
 /**
+ * Helper: Format a date as YYYY-MM-DD in local timezone
+ */
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Helper: Get today's date as YYYY-MM-DD
  */
 function getTodayDate(): string {
-  const now = new Date();
-  return now.toISOString().split('T')[0];
+  return formatLocalDate(new Date());
 }
 
 
@@ -388,8 +397,8 @@ export async function getMonthCalorieData(
 
   try {
     // Get the date range for the month
-    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const startDate = formatLocalDate(new Date(year, month, 1));
+    const endDate = formatLocalDate(new Date(year, month + 1, 0));
 
     // Query all daily logs in the date range with their per-day targets
     const logs = await db.getAllAsync<{ date: string; totalCalories: number; targetCalories: number }>(
