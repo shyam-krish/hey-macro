@@ -185,6 +185,154 @@ function getMealTotals(entries: FoodEntry[]) {
   );
 }
 
+// Animated Status Indicator Component
+function StatusIndicator({
+  isRecording,
+  isProcessing,
+  error,
+}: {
+  isRecording: boolean;
+  isProcessing: boolean;
+  error: string | null;
+}) {
+  const dotOpacity1 = useRef(new Animated.Value(0.3)).current;
+  const dotOpacity2 = useRef(new Animated.Value(0.3)).current;
+  const dotOpacity3 = useRef(new Animated.Value(0.3)).current;
+  const isActiveRef = useRef(false);
+
+  // Track active state in ref to avoid stale closure
+  useEffect(() => {
+    isActiveRef.current = isRecording || isProcessing;
+  }, [isRecording, isProcessing]);
+
+  // Animate dots in sequence
+  useEffect(() => {
+    if (!isRecording && !isProcessing) return;
+
+    const animateDots = () => {
+      // Reset all dots
+      dotOpacity1.setValue(0.3);
+      dotOpacity2.setValue(0.3);
+      dotOpacity3.setValue(0.3);
+
+      Animated.sequence([
+        Animated.timing(dotOpacity1, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(dotOpacity2, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(dotOpacity3, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.delay(200),
+      ]).start(() => {
+        // Use ref to check current state (avoids stale closure)
+        if (isActiveRef.current) {
+          animateDots();
+        }
+      });
+    };
+
+    animateDots();
+
+    return () => {
+      dotOpacity1.stopAnimation();
+      dotOpacity2.stopAnimation();
+      dotOpacity3.stopAnimation();
+    };
+  }, [isRecording, isProcessing]);
+
+  if (error) {
+    return (
+      <View style={[statusStyles.container, statusStyles.errorContainer]}>
+        <Text style={statusStyles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
+  const isListening = isRecording;
+  const statusText = isListening ? 'Listening' : 'Analyzing';
+  const accentColor = isListening ? '#ff4444' : ACCENT_COLOR;
+
+  return (
+    <View
+      style={[
+        statusStyles.container,
+        {
+          borderColor: accentColor,
+          shadowColor: accentColor,
+        },
+      ]}
+    >
+      <View style={statusStyles.textRow}>
+        <Text style={statusStyles.text}>{statusText}</Text>
+        <View style={statusStyles.dotsContainer}>
+          <Animated.Text style={[statusStyles.dot, { opacity: dotOpacity1 }]}>.</Animated.Text>
+          <Animated.Text style={[statusStyles.dot, { opacity: dotOpacity2 }]}>.</Animated.Text>
+          <Animated.Text style={[statusStyles.dot, { opacity: dotOpacity3 }]}>.</Animated.Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const statusStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    bottom: 130,
+    left: 20,
+    right: 20,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderWidth: 1.5,
+    // Enhanced shadow
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  errorContainer: {
+    borderColor: '#ff6b6b',
+    shadowColor: '#ff6b6b',
+  },
+  textRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  text: {
+    color: '#fff',
+    fontSize: 17,
+    fontFamily: 'Avenir Next',
+    fontWeight: '500',
+  },
+  dotsContainer: {
+    flexDirection: 'row',
+    width: 24,
+  },
+  dot: {
+    color: '#fff',
+    fontSize: 17,
+    fontFamily: 'Avenir Next',
+    fontWeight: '500',
+  },
+  errorText: {
+    color: '#ff6b6b',
+    fontSize: 15,
+    fontFamily: 'Avenir Next',
+    textAlign: 'center',
+  },
+});
+
 // Meal Card Component
 function MealCard({
   title,
@@ -618,12 +766,11 @@ export function HomeScreen() {
 
           {/* Status Indicator */}
           {(isRecording || isProcessing || isTextProcessing || voiceError || textError) && (
-            <View style={styles.voiceStatusContainer}>
-              {isRecording && <Text style={styles.voiceStatusText}>Listening...</Text>}
-              {(isProcessing || isTextProcessing) && <Text style={styles.voiceStatusText}>Analyzing...</Text>}
-              {voiceError && <Text style={styles.voiceErrorText}>{voiceError}</Text>}
-              {textError && <Text style={styles.voiceErrorText}>{textError}</Text>}
-            </View>
+            <StatusIndicator
+              isRecording={isRecording}
+              isProcessing={isProcessing || isTextProcessing}
+              error={voiceError || textError}
+            />
           )}
 
           {/* Text Input Bottom Sheet */}
@@ -908,38 +1055,6 @@ const styles = StyleSheet.create({
   fabProcessing: {
     backgroundColor: ACCENT_COLOR,
     shadowColor: ACCENT_COLOR,
-  },
-
-  // Voice Status
-  voiceStatusContainer: {
-    position: 'absolute',
-    bottom: 120,
-    left: 20,
-    right: 20,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 15,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  voiceStatusText: {
-    color: '#fff',
-    fontSize: 16,
-    fontFamily: 'Avenir Next',
-    textAlign: 'center',
-  },
-  voiceTranscript: {
-    color: '#aaa',
-    fontSize: 14,
-    fontFamily: 'Avenir Next',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  voiceErrorText: {
-    color: '#ff6b6b',
-    fontSize: 14,
-    fontFamily: 'Avenir Next',
-    textAlign: 'center',
   },
 
   // Empty State
