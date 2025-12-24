@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet,
@@ -12,10 +12,15 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  Easing,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useNavigation } from '@react-navigation/native';
 import { FoodEntry, DailyLog } from '../types';
 import { useAppDataContext } from '../contexts/AppDataContext';
@@ -37,17 +42,18 @@ function CalorieRing({
   target,
   size = 120,
   isToday = true,
+  animatedProgress,
 }: {
   current: number;
   target: number;
   size?: number;
   isToday?: boolean;
+  animatedProgress?: Animated.Value;
 }) {
   const strokeWidth = 10;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = Math.min(current / target, 1);
-  const strokeDashoffset = circumference * (1 - progress);
 
   // Calculate ring color based on calorie difference
   const getCalorieRingColor = () => {
@@ -67,6 +73,14 @@ function CalorieRing({
 
   const ringColor = getCalorieRingColor();
 
+  // Use animated value if provided, otherwise static
+  const strokeDashoffset = animatedProgress
+    ? animatedProgress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [circumference, circumference * (1 - progress)],
+      })
+    : circumference * (1 - progress);
+
   return (
     <View
       style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}
@@ -82,17 +96,31 @@ function CalorieRing({
           fill="transparent"
         />
         {/* Progress circle */}
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={ringColor}
-          strokeWidth={strokeWidth}
-          fill="transparent"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-        />
+        {animatedProgress ? (
+          <AnimatedCircle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={ringColor}
+            strokeWidth={strokeWidth}
+            fill="transparent"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+          />
+        ) : (
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={ringColor}
+            strokeWidth={strokeWidth}
+            fill="transparent"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset as number}
+            strokeLinecap="round"
+          />
+        )}
       </Svg>
       <View style={styles.ringTextContainer}>
         <Text style={styles.ringCurrentText}>{current}</Text>
@@ -107,23 +135,38 @@ function MacroProgressBar({
   label,
   current,
   target,
+  animatedProgress,
 }: {
   label: string;
   current: number;
   target: number;
+  animatedProgress?: Animated.Value;
 }) {
   const progress = Math.min(current / target, 1);
+  const widthPercent = `${progress * 100}%` as const;
+
+  // Animate width if animated value provided
+  const animatedWidth = animatedProgress
+    ? animatedProgress.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0%', widthPercent],
+      })
+    : null;
 
   return (
     <View style={styles.progressBarContainer}>
       <View style={styles.progressBarHeader}>
         <Text style={styles.progressBarLabel}>{label}</Text>
         <Text style={styles.progressBarValue}>
-          {current}/{target}
+          <Text style={styles.progressBarCurrent}>{current}</Text>/{target}
         </Text>
       </View>
       <View style={styles.progressBarTrack}>
-        <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
+        {animatedWidth ? (
+          <Animated.View style={[styles.progressBarFill, { width: animatedWidth }]} />
+        ) : (
+          <View style={[styles.progressBarFill, { width: widthPercent }]} />
+        )}
       </View>
     </View>
   );
@@ -188,6 +231,7 @@ type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snacks';
 
 export function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
+  const { width: screenWidth } = useWindowDimensions();
   const { user, targets, dailyLog, loading, error, refresh, selectedDate, changeDate } =
     useAppDataContext();
   const [selectedMeal, setSelectedMeal] = useState<{ title: string; type: MealType } | null>(
@@ -210,6 +254,87 @@ export function HomeScreen() {
     saveParsedFood,
     reset,
   } = useVoiceFoodLogger();
+
+  // Animation values for macro summary
+  const ringAnimProgress = useRef(new Animated.Value(0)).current;
+  const barsAnimProgress = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const lastAnimatedDate = useRef<string | null>(null);
+  const prevDateRef = useRef<string | null>(null);
+
+  // Animate slide and macro fill when date changes
+  useEffect(() => {
+    if (!dailyLog || loading) return;
+
+    // Only animate if this is a new date
+    if (lastAnimatedDate.current === selectedDate) return;
+
+    // Determine slide direction based on date comparison
+    const prevDate = prevDateRef.current;
+    let direction: 'left' | 'right' | 'none' = 'none';
+
+    if (prevDate && prevDate !== selectedDate) {
+      // Compare dates to determine direction
+      direction = selectedDate > prevDate ? 'left' : 'right';
+    }
+
+    // Update refs
+    prevDateRef.current = selectedDate;
+    lastAnimatedDate.current = selectedDate;
+
+    // Reset macro animations
+    ringAnimProgress.setValue(0);
+    barsAnimProgress.setValue(0);
+
+    if (direction !== 'none') {
+      // Slide animation: start from off-screen, slide to center
+      const startOffset = direction === 'left' ? screenWidth * 0.3 : -screenWidth * 0.3;
+      slideAnim.setValue(startOffset);
+
+      // Run slide and macro animations in parallel
+      Animated.parallel([
+        // Slide in
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        // Macro fill sequence (slightly delayed)
+        Animated.sequence([
+          Animated.delay(150),
+          Animated.timing(ringAnimProgress, {
+            toValue: 1,
+            duration: 600,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+          Animated.timing(barsAnimProgress, {
+            toValue: 1,
+            duration: 400,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+        ]),
+      ]).start();
+    } else {
+      // No slide, just macro animations (initial load)
+      Animated.sequence([
+        Animated.timing(ringAnimProgress, {
+          toValue: 1,
+          duration: 800,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(barsAnimProgress, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+      ]).start();
+    }
+  }, [dailyLog, loading, selectedDate, screenWidth]);
 
   // Fetch previous 7 days of logs for LLM context
   useEffect(() => {
@@ -325,6 +450,7 @@ export function HomeScreen() {
         </View>
       ) : (
         <>
+        <Animated.View style={[styles.mainContent, { transform: [{ translateX: slideAnim }] }]}>
           {/* Macro Summary Section */}
           <View style={styles.summarySection}>
             <CalorieRing
@@ -335,22 +461,26 @@ export function HomeScreen() {
                 const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                 return selectedDate === localToday;
               })()}
+              animatedProgress={ringAnimProgress}
             />
             <View style={styles.macroProgressBars}>
               <MacroProgressBar
                 label="Protein"
                 current={dailyLog.totalProtein}
                 target={dailyLog.targetProtein}
+                animatedProgress={barsAnimProgress}
               />
               <MacroProgressBar
                 label="Carbohydrates"
                 current={dailyLog.totalCarbs}
                 target={dailyLog.targetCarbs}
+                animatedProgress={barsAnimProgress}
               />
               <MacroProgressBar
                 label="Fat"
                 current={dailyLog.totalFat}
                 target={dailyLog.targetFat}
+                animatedProgress={barsAnimProgress}
               />
             </View>
           </View>
@@ -418,7 +548,8 @@ export function HomeScreen() {
               <View style={[styles.foodSection, styles.foodSectionContent]}>{content}</View>
             );
           })()}
-
+        </Animated.View>
+        <>
           {/* Meal Detail Sheet */}
           {selectedMeal && (
             <MealDetailSheet
@@ -549,6 +680,7 @@ export function HomeScreen() {
             </KeyboardAvoidingView>
           </Modal>
         </>
+        </>
       )}
     </SafeAreaView>
   );
@@ -558,6 +690,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  mainContent: {
+    flex: 1,
   },
 
   // Loading/Error States
@@ -630,6 +765,10 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 14,
     fontFamily: 'DIN Alternate',
+  },
+  progressBarCurrent: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   progressBarTrack: {
     height: 8,

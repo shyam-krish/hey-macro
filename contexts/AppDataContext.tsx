@@ -14,6 +14,7 @@ interface AppData {
   updateTargets: (
     newTargets: Omit<MacroTargets, 'createdAt' | 'updatedAt'>
   ) => Promise<void>;
+  invalidateCache: (date?: string) => void;
 }
 
 const AppDataContext = createContext<AppData | null>(null);
