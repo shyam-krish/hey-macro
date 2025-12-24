@@ -203,7 +203,6 @@ export function HomeScreen() {
   const {
     isRecording,
     isProcessing,
-    transcript,
     parsedFood,
     error: voiceError,
     startRecording,
@@ -487,13 +486,10 @@ export function HomeScreen() {
           </LinearGradient>
 
           {/* Status Indicator */}
-          {(isRecording || isProcessing || isTextProcessing || transcript || textError) && (
+          {(isRecording || isProcessing || isTextProcessing || voiceError || textError) && (
             <View style={styles.voiceStatusContainer}>
               {isRecording && <Text style={styles.voiceStatusText}>Listening...</Text>}
               {(isProcessing || isTextProcessing) && <Text style={styles.voiceStatusText}>Analyzing...</Text>}
-              {transcript && !isProcessing && (
-                <Text style={styles.voiceTranscript}>"{transcript}"</Text>
-              )}
               {voiceError && <Text style={styles.voiceErrorText}>{voiceError}</Text>}
               {textError && <Text style={styles.voiceErrorText}>{textError}</Text>}
             </View>
@@ -686,7 +682,7 @@ const styles = StyleSheet.create({
   },
   mealItemContainer: {
     borderLeftWidth: 2,
-    borderLeftColor: ACCENT_COLOR,
+    borderLeftColor: '#666',
     paddingLeft: 12,
   },
   mealItem: {
@@ -771,8 +767,8 @@ const styles = StyleSheet.create({
     shadowColor: '#ff4444',
   },
   fabProcessing: {
-    backgroundColor: '#4444ff',
-    shadowColor: '#4444ff',
+    backgroundColor: ACCENT_COLOR,
+    shadowColor: ACCENT_COLOR,
   },
 
   // Voice Status
