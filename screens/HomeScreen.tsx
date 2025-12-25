@@ -417,6 +417,11 @@ export function HomeScreen() {
     // Only animate if this is a new date
     if (lastAnimatedDate.current === selectedDate) return;
 
+    // Check if viewing today
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isViewingToday = selectedDate === todayStr;
+
     // Determine slide direction based on date comparison
     const prevDate = prevDateRef.current;
     let direction: 'left' | 'right' | 'none' = 'none';
@@ -430,7 +435,26 @@ export function HomeScreen() {
     prevDateRef.current = selectedDate;
     lastAnimatedDate.current = selectedDate;
 
-    // Reset macro animations
+    // For past days, skip macro fill animations (show full values immediately)
+    if (!isViewingToday) {
+      ringAnimProgress.setValue(1);
+      barsAnimProgress.setValue(1);
+
+      // Still do slide animation if navigating between days
+      if (direction !== 'none') {
+        const startOffset = direction === 'left' ? screenWidth * 0.3 : -screenWidth * 0.3;
+        slideAnim.setValue(startOffset);
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start();
+      }
+      return;
+    }
+
+    // Reset macro animations for today
     ringAnimProgress.setValue(0);
     barsAnimProgress.setValue(0);
 
@@ -466,7 +490,7 @@ export function HomeScreen() {
         ]),
       ]).start();
     } else {
-      // No slide, just macro animations (initial load)
+      // No slide, just macro animations (initial load on today)
       Animated.sequence([
         Animated.timing(ringAnimProgress, {
           toValue: 1,
