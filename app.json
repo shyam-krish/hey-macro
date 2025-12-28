@@ -14,7 +14,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.hey-macro"
+      "bundleIdentifier": "com.anonymous.hey-macro",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Hey Macro may use photos to help identify and log food items"
+      }
     },
     "android": {
       "adaptiveIcon": {
