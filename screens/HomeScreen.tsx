@@ -392,6 +392,7 @@ export function HomeScreen() {
   const [textParsedFood, setTextParsedFood] = useState<LLMResponse | null>(null);
   const [textError, setTextError] = useState<string | null>(null);
   const [previousDayLogs, setPreviousDayLogs] = useState<DailyLog[]>([]);
+  const [isSavingFood, setIsSavingFood] = useState(false);
   const {
     isRecording,
     isProcessing,
@@ -405,10 +406,20 @@ export function HomeScreen() {
 
   // Animation values for macro summary
   const ringAnimProgress = useRef(new Animated.Value(0)).current;
-  const barsAnimProgress = useRef(new Animated.Value(0)).current;
+  const proteinAnimProgress = useRef(new Animated.Value(0)).current;
+  const carbsAnimProgress = useRef(new Animated.Value(0)).current;
+  const fatAnimProgress = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const hasAnimatedOnStartup = useRef(false);
   const prevDateRef = useRef<string | null>(null);
+
+  // Store old macro values for incremental animation
+  const oldMacrosRef = useRef<{
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  } | null>(null);
 
   // Animate slide and macro fill - only on initial app startup
   useEffect(() => {
@@ -418,7 +429,9 @@ export function HomeScreen() {
     if (hasAnimatedOnStartup.current) {
       // After startup, just show full values immediately
       ringAnimProgress.setValue(1);
-      barsAnimProgress.setValue(1);
+      proteinAnimProgress.setValue(1);
+      carbsAnimProgress.setValue(1);
+      fatAnimProgress.setValue(1);
       return;
     }
 
@@ -445,7 +458,9 @@ export function HomeScreen() {
     // For past days, skip macro fill animations (show full values immediately)
     if (!isViewingToday) {
       ringAnimProgress.setValue(1);
-      barsAnimProgress.setValue(1);
+      proteinAnimProgress.setValue(1);
+      carbsAnimProgress.setValue(1);
+      fatAnimProgress.setValue(1);
 
       // Still do slide animation if navigating between days
       if (direction !== 'none') {
@@ -463,7 +478,9 @@ export function HomeScreen() {
 
     // Reset macro animations for today
     ringAnimProgress.setValue(0);
-    barsAnimProgress.setValue(0);
+    proteinAnimProgress.setValue(0);
+    carbsAnimProgress.setValue(0);
+    fatAnimProgress.setValue(0);
 
     if (direction !== 'none') {
       // Slide animation: start from off-screen, slide to center
@@ -488,12 +505,26 @@ export function HomeScreen() {
             easing: Easing.out(Easing.cubic),
             useNativeDriver: false,
           }),
-          Animated.timing(barsAnimProgress, {
-            toValue: 1,
-            duration: 400,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: false,
-          }),
+          Animated.parallel([
+            Animated.timing(proteinAnimProgress, {
+              toValue: 1,
+              duration: 400,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: false,
+            }),
+            Animated.timing(carbsAnimProgress, {
+              toValue: 1,
+              duration: 400,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: false,
+            }),
+            Animated.timing(fatAnimProgress, {
+              toValue: 1,
+              duration: 400,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: false,
+            }),
+          ]),
         ]),
       ]).start();
     } else {
@@ -505,15 +536,99 @@ export function HomeScreen() {
           easing: Easing.out(Easing.cubic),
           useNativeDriver: false,
         }),
-        Animated.timing(barsAnimProgress, {
-          toValue: 1,
-          duration: 600,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: false,
-        }),
+        Animated.parallel([
+          Animated.timing(proteinAnimProgress, {
+            toValue: 1,
+            duration: 600,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+          Animated.timing(carbsAnimProgress, {
+            toValue: 1,
+            duration: 600,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+          Animated.timing(fatAnimProgress, {
+            toValue: 1,
+            duration: 600,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+        ]),
       ]).start();
     }
   }, [dailyLog, loading, selectedDate, screenWidth]);
+
+  // Animate macros when dailyLog updates after saving food
+  useEffect(() => {
+    if (!dailyLog || !oldMacrosRef.current || !isSavingFood) return;
+
+    // Check if the values have actually changed
+    const hasChanged =
+      oldMacrosRef.current.calories !== dailyLog.totalCalories ||
+      oldMacrosRef.current.protein !== dailyLog.totalProtein ||
+      oldMacrosRef.current.carbs !== dailyLog.totalCarbs ||
+      oldMacrosRef.current.fat !== dailyLog.totalFat;
+
+    if (!hasChanged) return;
+
+    // Calculate old and new progress values for each macro
+    const oldCalorieProgress = Math.min(
+      oldMacrosRef.current.calories / dailyLog.targetCalories,
+      1
+    );
+    const newCalorieProgress = Math.min(dailyLog.totalCalories / dailyLog.targetCalories, 1);
+
+    const oldProteinProgress = Math.min(
+      oldMacrosRef.current.protein / dailyLog.targetProtein,
+      1
+    );
+    const newProteinProgress = Math.min(dailyLog.totalProtein / dailyLog.targetProtein, 1);
+
+    const oldCarbsProgress = Math.min(oldMacrosRef.current.carbs / dailyLog.targetCarbs, 1);
+    const newCarbsProgress = Math.min(dailyLog.totalCarbs / dailyLog.targetCarbs, 1);
+
+    const oldFatProgress = Math.min(oldMacrosRef.current.fat / dailyLog.targetFat, 1);
+    const newFatProgress = Math.min(dailyLog.totalFat / dailyLog.targetFat, 1);
+
+    // Set to old progress values
+    ringAnimProgress.setValue(oldCalorieProgress);
+    proteinAnimProgress.setValue(oldProteinProgress);
+    carbsAnimProgress.setValue(oldCarbsProgress);
+    fatAnimProgress.setValue(oldFatProgress);
+
+    // Animate to new values
+    Animated.parallel([
+      Animated.timing(ringAnimProgress, {
+        toValue: newCalorieProgress,
+        duration: 600,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.timing(proteinAnimProgress, {
+        toValue: newProteinProgress,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.timing(carbsAnimProgress, {
+        toValue: newCarbsProgress,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.timing(fatAnimProgress, {
+        toValue: newFatProgress,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
+      // Animation complete, clear old values
+      oldMacrosRef.current = null;
+    });
+  }, [dailyLog, isSavingFood]);
 
   // Fetch previous 7 days of logs for LLM context
   useEffect(() => {
@@ -569,12 +684,35 @@ export function HomeScreen() {
 
     (async () => {
       try {
+        // Show loading state
+        setIsSavingFood(true);
+
+        // Store current macro values for animation
+        oldMacrosRef.current = {
+          calories: dailyLog.totalCalories,
+          protein: dailyLog.totalProtein,
+          carbs: dailyLog.totalCarbs,
+          fat: dailyLog.totalFat,
+        };
+
+        // Save the food
         await saveParsedFood(dailyLog.dailyLogID, 'default-user');
         if (cancelled) return;
         reset();
+
+        // Wait 2 seconds for a more natural feel
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (cancelled) return;
+
+        // Refresh data
         await refresh();
+        if (cancelled) return;
+
+        // Hide loading state (animation will trigger from separate useEffect)
+        setIsSavingFood(false);
       } catch (err) {
         console.error('Error saving food:', err);
+        setIsSavingFood(false);
       }
     })();
 
@@ -591,13 +729,36 @@ export function HomeScreen() {
 
     (async () => {
       try {
+        // Show loading state
+        setIsSavingFood(true);
+
+        // Store current macro values for animation
+        oldMacrosRef.current = {
+          calories: dailyLog.totalCalories,
+          protein: dailyLog.totalProtein,
+          carbs: dailyLog.totalCarbs,
+          fat: dailyLog.totalFat,
+        };
+
+        // Save the food
         await replaceDailyFoodEntries('default-user', dailyLog.dailyLogID, textParsedFood);
         if (cancelled) return;
         setTextParsedFood(null);
+
+        // Wait 2 seconds for a more natural feel
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (cancelled) return;
+
+        // Refresh data
         await refresh();
+        if (cancelled) return;
+
+        // Hide loading state (animation will trigger from separate useEffect)
+        setIsSavingFood(false);
       } catch (err) {
         console.error('Error saving text food:', err);
         setTextError(err instanceof Error ? err.message : 'Failed to save food');
+        setIsSavingFood(false);
       }
     })();
 
@@ -647,86 +808,98 @@ export function HomeScreen() {
                 label="Protein"
                 current={dailyLog.totalProtein}
                 target={dailyLog.targetProtein}
-                animatedProgress={barsAnimProgress}
+                animatedProgress={proteinAnimProgress}
               />
               <MacroProgressBar
                 label="Carbohydrates"
                 current={dailyLog.totalCarbs}
                 target={dailyLog.targetCarbs}
-                animatedProgress={barsAnimProgress}
+                animatedProgress={carbsAnimProgress}
               />
               <MacroProgressBar
                 label="Fat"
                 current={dailyLog.totalFat}
                 target={dailyLog.targetFat}
-                animatedProgress={barsAnimProgress}
+                animatedProgress={fatAnimProgress}
               />
             </View>
           </View>
 
           {/* Food Section */}
-          {(() => {
-            const hasFood =
-              dailyLog.breakfast.length > 0 ||
-              dailyLog.lunch.length > 0 ||
-              dailyLog.dinner.length > 0 ||
-              dailyLog.snacks.length > 0;
+          <View style={{ flex: 1, position: 'relative' }}>
+            {(() => {
+              const hasFood =
+                dailyLog.breakfast.length > 0 ||
+                dailyLog.lunch.length > 0 ||
+                dailyLog.dinner.length > 0 ||
+                dailyLog.snacks.length > 0;
 
-            const content = (
-              <>
-                <Text style={styles.foodSectionTitle}>Food</Text>
-                {hasFood ? (
-                  <>
-                    {dailyLog.breakfast.length > 0 && (
-                      <MealCard
-                        title="Breakfast"
-                        entries={dailyLog.breakfast}
-                        onPress={() => setSelectedMeal({ title: 'Breakfast', type: 'breakfast' })}
-                      />
-                    )}
-                    {dailyLog.lunch.length > 0 && (
-                      <MealCard
-                        title="Lunch"
-                        entries={dailyLog.lunch}
-                        onPress={() => setSelectedMeal({ title: 'Lunch', type: 'lunch' })}
-                      />
-                    )}
-                    {dailyLog.dinner.length > 0 && (
-                      <MealCard
-                        title="Dinner"
-                        entries={dailyLog.dinner}
-                        onPress={() => setSelectedMeal({ title: 'Dinner', type: 'dinner' })}
-                      />
-                    )}
-                    {dailyLog.snacks.length > 0 && (
-                      <MealCard
-                        title="Snacks"
-                        entries={dailyLog.snacks}
-                        onPress={() => setSelectedMeal({ title: 'Snacks', type: 'snacks' })}
-                      />
-                    )}
-                    {/* Bottom padding for floating buttons */}
-                    <View style={{ height: 100 }} />
-                  </>
-                ) : (
-                  <View style={styles.emptyStateContainer}>
-                    <Text style={styles.emptyStateText}>No food logged yet</Text>
-                    <Text style={styles.emptyStateSubtext}>
-                      Tap the mic button to get started
-                    </Text>
-                  </View>
-                )}
-              </>
-            );
+              const content = (
+                <>
+                  <Text style={styles.foodSectionTitle}>Food</Text>
+                  {hasFood ? (
+                    <>
+                      {dailyLog.breakfast.length > 0 && (
+                        <MealCard
+                          title="Breakfast"
+                          entries={dailyLog.breakfast}
+                          onPress={() => setSelectedMeal({ title: 'Breakfast', type: 'breakfast' })}
+                        />
+                      )}
+                      {dailyLog.lunch.length > 0 && (
+                        <MealCard
+                          title="Lunch"
+                          entries={dailyLog.lunch}
+                          onPress={() => setSelectedMeal({ title: 'Lunch', type: 'lunch' })}
+                        />
+                      )}
+                      {dailyLog.dinner.length > 0 && (
+                        <MealCard
+                          title="Dinner"
+                          entries={dailyLog.dinner}
+                          onPress={() => setSelectedMeal({ title: 'Dinner', type: 'dinner' })}
+                        />
+                      )}
+                      {dailyLog.snacks.length > 0 && (
+                        <MealCard
+                          title="Snacks"
+                          entries={dailyLog.snacks}
+                          onPress={() => setSelectedMeal({ title: 'Snacks', type: 'snacks' })}
+                        />
+                      )}
+                      {/* Bottom padding for floating buttons */}
+                      <View style={{ height: 100 }} />
+                    </>
+                  ) : (
+                    <View style={styles.emptyStateContainer}>
+                      <Text style={styles.emptyStateText}>No food logged yet</Text>
+                      <Text style={styles.emptyStateSubtext}>
+                        Tap the mic button to get started
+                      </Text>
+                    </View>
+                  )}
+                </>
+              );
 
-            return hasFood ? (
-              <ScrollView style={styles.foodSection} contentContainerStyle={styles.foodSectionContent}>
-                {content}
-              </ScrollView>
-            ) : (
-              <View style={[styles.foodSection, styles.foodSectionContent]}>{content}</View>
-            );
-          })()}
+              return hasFood ? (
+                <ScrollView style={styles.foodSection} contentContainerStyle={styles.foodSectionContent}>
+                  {content}
+                </ScrollView>
+              ) : (
+                <View style={[styles.foodSection, styles.foodSectionContent]}>{content}</View>
+              );
+            })()}
+
+            {/* Loading Overlay */}
+            {isSavingFood && (
+              <View style={styles.foodLoadingOverlay}>
+                <View style={styles.foodLoadingContainer}>
+                  <ActivityIndicator size="large" color={ACCENT_COLOR} />
+                  <Text style={styles.foodLoadingText}>Updating macros...</Text>
+                </View>
+              </View>
+            )}
+          </View>
         </Animated.View>
         <>
           {/* Meal Detail Sheet */}
@@ -1174,5 +1347,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Avenir Next',
     fontWeight: '600',
+  },
+
+  // Food Loading Overlay
+  foodLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  foodLoadingContainer: {
+    alignItems: 'center',
+    gap: 16,
+  },
+  foodLoadingText: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'Avenir Next',
+    fontWeight: '500',
   },
 });
