@@ -407,15 +407,23 @@ export function HomeScreen() {
   const ringAnimProgress = useRef(new Animated.Value(0)).current;
   const barsAnimProgress = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const lastAnimatedDate = useRef<string | null>(null);
+  const hasAnimatedOnStartup = useRef(false);
   const prevDateRef = useRef<string | null>(null);
 
-  // Animate slide and macro fill when date changes
+  // Animate slide and macro fill - only on initial app startup
   useEffect(() => {
     if (!dailyLog || loading) return;
 
-    // Only animate if this is a new date
-    if (lastAnimatedDate.current === selectedDate) return;
+    // Only animate on first load (app startup)
+    if (hasAnimatedOnStartup.current) {
+      // After startup, just show full values immediately
+      ringAnimProgress.setValue(1);
+      barsAnimProgress.setValue(1);
+      return;
+    }
+
+    // Mark that we've done the startup animation
+    hasAnimatedOnStartup.current = true;
 
     // Check if viewing today
     const now = new Date();
@@ -433,7 +441,6 @@ export function HomeScreen() {
 
     // Update refs
     prevDateRef.current = selectedDate;
-    lastAnimatedDate.current = selectedDate;
 
     // For past days, skip macro fill animations (show full values immediately)
     if (!isViewingToday) {
