@@ -137,9 +137,9 @@ async function runMigrations(): Promise<void> {
       console.log('Running migration: Adding target columns to daily_logs');
       await db.execAsync(`
         ALTER TABLE daily_logs ADD COLUMN targetCalories INTEGER DEFAULT 2700;
-        ALTER TABLE daily_logs ADD COLUMN targetProtein INTEGER DEFAULT 150;
-        ALTER TABLE daily_logs ADD COLUMN targetCarbs INTEGER DEFAULT 300;
-        ALTER TABLE daily_logs ADD COLUMN targetFat INTEGER DEFAULT 100;
+        ALTER TABLE daily_logs ADD COLUMN targetProtein INTEGER DEFAULT 200;
+        ALTER TABLE daily_logs ADD COLUMN targetCarbs INTEGER DEFAULT 295;
+        ALTER TABLE daily_logs ADD COLUMN targetFat INTEGER DEFAULT 80;
       `);
       console.log('Migration complete: Added target columns');
     }
@@ -207,9 +207,9 @@ export async function getOrCreateMacroTargets(userID: string): Promise<MacroTarg
     const defaultTargets: MacroTargets = {
       userID,
       calories: 2700,
-      protein: 150,
-      carbs: 300,
-      fat: 100,
+      protein: 200,
+      carbs: 295,
+      fat: 80,
       createdAt: now,
       updatedAt: now,
     };
