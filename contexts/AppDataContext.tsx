@@ -14,6 +14,9 @@ interface AppData {
   updateTargets: (
     newTargets: Omit<MacroTargets, 'createdAt' | 'updatedAt'>
   ) => Promise<void>;
+  updateUser: (
+    newUser: Omit<User, 'createdAt' | 'updatedAt'>
+  ) => Promise<void>;
   invalidateCache: (date?: string) => void;
 }
 

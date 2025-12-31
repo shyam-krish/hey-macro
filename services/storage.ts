@@ -10,8 +10,8 @@ import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse, Da
 
 const DATABASE_NAME = 'heymacro.db';
 const DEFAULT_USER_ID = 'default-user';
-const DEFAULT_USER_FIRST_NAME = 'Shyam';
-const DEFAULT_USER_LAST_NAME = 'Krishnan';
+const DEFAULT_USER_FIRST_NAME = 'Default';
+const DEFAULT_USER_LAST_NAME = 'Name';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -182,6 +182,38 @@ export async function getOrCreateDefaultUser(): Promise<User> {
     };
   } catch (error) {
     console.error('Failed to get or create default user:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update user information
+ */
+export async function updateUser(
+  user: Omit<User, 'createdAt' | 'updatedAt'>
+): Promise<User> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const now = getCurrentTimestamp();
+
+    const existing = await db.getFirstAsync<User>(
+      'SELECT * FROM users WHERE userID = ?',
+      [user.userID]
+    );
+
+    await db.runAsync(
+      'UPDATE users SET firstName = ?, lastName = ?, updatedAt = ? WHERE userID = ?',
+      [user.firstName, user.lastName, now, user.userID]
+    );
+
+    return {
+      ...user,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+  } catch (error) {
+    console.error('Failed to update user:', error);
     throw error;
   }
 }
