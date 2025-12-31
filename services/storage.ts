@@ -564,6 +564,70 @@ export async function deleteFoodEntry(foodEntryID: string): Promise<void> {
 }
 
 /**
+ * Update a food entry
+ */
+export async function updateFoodEntry(
+  foodEntryID: string,
+  updates: {
+    name?: string;
+    quantity?: string;
+    calories?: number;
+    protein?: number;
+    carbs?: number;
+    fat?: number;
+  }
+): Promise<void> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const now = getCurrentTimestamp();
+
+    // Build dynamic update query based on provided fields
+    const fields: string[] = [];
+    const values: (string | number)[] = [];
+
+    if (updates.name !== undefined) {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+    if (updates.quantity !== undefined) {
+      fields.push('quantity = ?');
+      values.push(updates.quantity);
+    }
+    if (updates.calories !== undefined) {
+      fields.push('calories = ?');
+      values.push(updates.calories);
+    }
+    if (updates.protein !== undefined) {
+      fields.push('protein = ?');
+      values.push(updates.protein);
+    }
+    if (updates.carbs !== undefined) {
+      fields.push('carbs = ?');
+      values.push(updates.carbs);
+    }
+    if (updates.fat !== undefined) {
+      fields.push('fat = ?');
+      values.push(updates.fat);
+    }
+
+    if (fields.length === 0) return;
+
+    fields.push('updatedAt = ?');
+    values.push(now);
+    values.push(foodEntryID);
+
+    await db.runAsync(
+      `UPDATE food_entries SET ${fields.join(', ')} WHERE foodEntryID = ?`,
+      values
+    );
+  } catch (error) {
+    console.error('Failed to update food entry:', error);
+    throw error;
+  }
+}
+
+/**
  * Get the last N days of logs (excluding today), filtering out empty days
  * Returns logs sorted by date descending (most recent first)
  */

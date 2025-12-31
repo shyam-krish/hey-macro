@@ -402,6 +402,26 @@ export function HomeScreen() {
   const [selectedMeal, setSelectedMeal] = useState<{ title: string; type: MealType } | null>(
     null
   );
+  const [mealSheetVisible, setMealSheetVisible] = useState(false);
+  // Keep track of last selected meal for rendering during close animation
+  const lastSelectedMealRef = useRef<{ title: string; type: MealType } | null>(null);
+
+  // Update ref when meal is selected
+  useEffect(() => {
+    if (selectedMeal) {
+      lastSelectedMealRef.current = selectedMeal;
+      setMealSheetVisible(true);
+    }
+  }, [selectedMeal]);
+
+  const handleCloseMealSheet = () => {
+    setMealSheetVisible(false);
+  };
+
+  const handleMealSheetClosed = () => {
+    // Only clear selectedMeal after modal has fully animated out
+    setSelectedMeal(null);
+  };
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [textInputVisible, setTextInputVisible] = useState(false);
   const [textInput, setTextInput] = useState('');
@@ -827,6 +847,11 @@ export function HomeScreen() {
 
     let cancelled = false;
 
+    // Fail-safe: ensure loading state clears after max 10 seconds
+    const failSafeTimeout = setTimeout(() => {
+      setIsSavingFood(false);
+    }, 10000);
+
     (async () => {
       try {
         // Show loading state
@@ -865,6 +890,8 @@ export function HomeScreen() {
 
     return () => {
       cancelled = true;
+      clearTimeout(failSafeTimeout);
+      setIsSavingFood(false);
     };
   }, [parsedFood]);
 
@@ -873,6 +900,11 @@ export function HomeScreen() {
     if (!textParsedFood || !dailyLog) return;
 
     let cancelled = false;
+
+    // Fail-safe: ensure loading state clears after max 10 seconds
+    const failSafeTimeout = setTimeout(() => {
+      setIsSavingFood(false);
+    }, 10000);
 
     (async () => {
       try {
@@ -913,6 +945,8 @@ export function HomeScreen() {
 
     return () => {
       cancelled = true;
+      clearTimeout(failSafeTimeout);
+      setIsSavingFood(false);
     };
   }, [textParsedFood]);
 
@@ -1051,15 +1085,15 @@ export function HomeScreen() {
           </View>
         </Animated.View>
         <>
-          {/* Meal Detail Sheet */}
-          {selectedMeal && (
-            <MealDetailSheet
-              visible={selectedMeal !== null}
-              title={selectedMeal.title}
-              entries={dailyLog[selectedMeal.type]}
-              onClose={() => setSelectedMeal(null)}
-            />
-          )}
+          {/* Meal Detail Sheet - always mounted to allow proper Modal cleanup */}
+          <MealDetailSheet
+            visible={mealSheetVisible}
+            title={lastSelectedMealRef.current?.title ?? ''}
+            entries={lastSelectedMealRef.current ? dailyLog[lastSelectedMealRef.current.type] : []}
+            onClose={handleCloseMealSheet}
+            onUpdate={refresh}
+            onModalHide={handleMealSheetClosed}
+          />
 
           {/* Calendar Dropdown */}
           <CalendarDropdown
