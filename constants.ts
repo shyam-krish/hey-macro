@@ -161,8 +161,8 @@ Each meal array contains FoodItem objects:
 
 export const mockTargets: MacroTargets = {
   userID: 'default-user',
-  calories: 2700,
-  protein: 150,
+  calories: 2690,
+  protein: 170,
   carbs: 300,
   fat: 90,
   createdAt: new Date().toISOString(),
@@ -177,8 +177,8 @@ export const mockDailyLog: DailyLog = {
   totalProtein: 130,
   totalCarbs: 220,
   totalFat: 50,
-  targetCalories: 2700,
-  targetProtein: 150,
+  targetCalories: 2690,
+  targetProtein: 170,
   targetCarbs: 300,
   targetFat: 90,
   breakfast: [

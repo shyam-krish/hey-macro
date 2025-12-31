@@ -10,8 +10,8 @@ import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse, Da
 
 const DATABASE_NAME = 'heymacro.db';
 const DEFAULT_USER_ID = 'default-user';
-const DEFAULT_USER_FIRST_NAME = 'Shyam';
-const DEFAULT_USER_LAST_NAME = 'Krishnan';
+const DEFAULT_USER_FIRST_NAME = 'Default';
+const DEFAULT_USER_LAST_NAME = 'Name';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -136,8 +136,8 @@ async function runMigrations(): Promise<void> {
     if (!columnNames.includes('targetCalories')) {
       console.log('Running migration: Adding target columns to daily_logs');
       await db.execAsync(`
-        ALTER TABLE daily_logs ADD COLUMN targetCalories INTEGER DEFAULT 2700;
-        ALTER TABLE daily_logs ADD COLUMN targetProtein INTEGER DEFAULT 150;
+        ALTER TABLE daily_logs ADD COLUMN targetCalories INTEGER DEFAULT 2690;
+        ALTER TABLE daily_logs ADD COLUMN targetProtein INTEGER DEFAULT 170;
         ALTER TABLE daily_logs ADD COLUMN targetCarbs INTEGER DEFAULT 300;
         ALTER TABLE daily_logs ADD COLUMN targetFat INTEGER DEFAULT 90;
       `);
@@ -187,6 +187,38 @@ export async function getOrCreateDefaultUser(): Promise<User> {
 }
 
 /**
+ * Update user information
+ */
+export async function updateUser(
+  user: Omit<User, 'createdAt' | 'updatedAt'>
+): Promise<User> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const now = getCurrentTimestamp();
+
+    const existing = await db.getFirstAsync<User>(
+      'SELECT * FROM users WHERE userID = ?',
+      [user.userID]
+    );
+
+    await db.runAsync(
+      'UPDATE users SET firstName = ?, lastName = ?, updatedAt = ? WHERE userID = ?',
+      [user.firstName, user.lastName, now, user.userID]
+    );
+
+    return {
+      ...user,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+  } catch (error) {
+    console.error('Failed to update user:', error);
+    throw error;
+  }
+}
+
+/**
  * Get or create macro targets for a user
  */
 export async function getOrCreateMacroTargets(userID: string): Promise<MacroTargets> {
@@ -206,8 +238,8 @@ export async function getOrCreateMacroTargets(userID: string): Promise<MacroTarg
     const now = getCurrentTimestamp();
     const defaultTargets: MacroTargets = {
       userID,
-      calories: 2700,
-      protein: 150,
+      calories: 2690,
+      protein: 170,
       carbs: 300,
       fat: 90,
       createdAt: now,

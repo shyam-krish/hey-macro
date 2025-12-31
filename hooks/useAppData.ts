@@ -6,6 +6,7 @@ import {
   getOrCreateMacroTargets,
   getOrCreateDailyLog,
   updateMacroTargets,
+  updateUser,
 } from '../services/storage';
 import { mockTargets, mockDailyLog } from '../constants';
 
@@ -43,6 +44,9 @@ interface AppData {
   isToday: boolean;
   updateTargets: (
     newTargets: Omit<MacroTargets, 'createdAt' | 'updatedAt'>
+  ) => Promise<void>;
+  updateUser: (
+    newUser: Omit<User, 'createdAt' | 'updatedAt'>
   ) => Promise<void>;
   invalidateCache: (date?: string) => void;
 }
@@ -133,8 +137,8 @@ export function useAppData(): AppData {
         // Use mock data
         setUser({
           userID: 'default-user',
-          firstName: 'Shyam',
-          lastName: 'Krishnan',
+          firstName: 'Default',
+          lastName: 'Name',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
@@ -224,6 +228,28 @@ export function useAppData(): AppData {
     }
   };
 
+  const updateUserHandler = async (
+    newUser: Omit<User, 'createdAt' | 'updatedAt'>
+  ) => {
+    try {
+      if (USE_DATABASE) {
+        const updated = await updateUser(newUser);
+        userRef.current = updated;
+        setUser(updated);
+      } else {
+        // Mock mode: just update state
+        setUser({
+          ...newUser,
+          createdAt: user?.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    } catch (err) {
+      console.error('Failed to update user:', err);
+      throw err;
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -241,6 +267,7 @@ export function useAppData(): AppData {
     changeDate,
     isToday,
     updateTargets: updateTargetsHandler,
+    updateUser: updateUserHandler,
     invalidateCache,
   };
 }

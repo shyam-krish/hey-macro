@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -18,23 +18,68 @@ import { ProfileScreenNavigationProp } from '../navigation/types';
 
 export function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
-  const { user, targets, updateTargets } = useAppDataContext();
-  const [isEditing, setIsEditing] = useState(false);
+  const { user, targets, updateTargets, updateUser } = useAppDataContext();
+  const [isEditingMacros, setIsEditingMacros] = useState(false);
+  const [isEditingUser, setIsEditingUser] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
 
   const calculator = useMacroCalculator(targets);
 
-  const handleEdit = () => {
-    calculator.reset(targets);
-    setIsEditing(true);
+  // Initialize name fields when user data loads
+  useEffect(() => {
+    if (user) {
+      setFirstName(user.firstName);
+      setLastName(user.lastName);
+    }
+  }, [user]);
+
+  const handleEditUser = () => {
+    if (user) {
+      setFirstName(user.firstName);
+      setLastName(user.lastName);
+    }
+    setIsEditingUser(true);
   };
 
-  const handleCancel = () => {
-    calculator.reset(targets);
-    setIsEditing(false);
+  const handleCancelUser = () => {
+    if (user) {
+      setFirstName(user.firstName);
+      setLastName(user.lastName);
+    }
+    setIsEditingUser(false);
   };
 
-  const handleSave = async () => {
+  const handleSaveUser = async () => {
+    if (!user || !firstName.trim() || !lastName.trim()) return;
+
+    setIsSaving(true);
+    try {
+      await updateUser({
+        userID: user.userID,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
+      setIsEditingUser(false);
+    } catch (err) {
+      console.error('Failed to save user:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditMacros = () => {
+    calculator.reset(targets);
+    setIsEditingMacros(true);
+  };
+
+  const handleCancelMacros = () => {
+    calculator.reset(targets);
+    setIsEditingMacros(false);
+  };
+
+  const handleSaveMacros = async () => {
     const finalValues = calculator.getFinalValues();
     if (!finalValues) return;
 
@@ -44,7 +89,7 @@ export function ProfileScreen() {
         userID: targets.userID,
         ...finalValues,
       });
-      setIsEditing(false);
+      setIsEditingMacros(false);
     } catch (err) {
       console.error('Failed to save targets:', err);
     } finally {
@@ -67,7 +112,7 @@ export function ProfileScreen() {
       fat: calculator.setFat,
     };
 
-    if (!isEditing) {
+    if (!isEditingMacros) {
       return (
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>{label}</Text>
@@ -128,23 +173,12 @@ export function ProfileScreen() {
         <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
           {/* User Info */}
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>USER</Text>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Name</Text>
-              <Text style={styles.infoValue}>
-                {user ? `${user.firstName} ${user.lastName}` : 'Loading...'}
-              </Text>
-            </View>
-          </View>
-
-          {/* Macro Targets */}
-          <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>MACRO TARGETS</Text>
-              {!isEditing && (
+              <Text style={styles.sectionLabel}>USER</Text>
+              {!isEditingUser && (
                 <TouchableOpacity
                   style={styles.editButton}
-                  onPress={handleEdit}
+                  onPress={handleEditUser}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.editButtonText}>Edit</Text>
@@ -152,7 +186,57 @@ export function ProfileScreen() {
               )}
             </View>
 
-            {isEditing && (
+            {!isEditingUser ? (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Name</Text>
+                <Text style={styles.infoValue}>
+                  {user ? `${user.firstName} ${user.lastName}` : 'Loading...'}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.inputRow}>
+                  <Text style={styles.inputLabel}>First Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    placeholder="First Name"
+                    placeholderTextColor="#555"
+                    selectTextOnFocus
+                  />
+                </View>
+                <View style={styles.inputRow}>
+                  <Text style={styles.inputLabel}>Last Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={lastName}
+                    onChangeText={setLastName}
+                    placeholder="Last Name"
+                    placeholderTextColor="#555"
+                    selectTextOnFocus
+                  />
+                </View>
+              </>
+            )}
+          </View>
+
+          {/* Macro Targets */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>MACRO TARGETS</Text>
+              {!isEditingMacros && (
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={handleEditMacros}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.editButtonText}>Edit</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {isEditingMacros && (
               <View style={styles.hintContainer}>
                 <Text style={styles.hintText}>
                   Set any 3 values and the 4th will auto-calculate
@@ -173,7 +257,7 @@ export function ProfileScreen() {
           </View>
 
           {/* Formula Reference */}
-          {isEditing && (
+          {isEditingMacros && (
             <View style={styles.formulaSection}>
               <Text style={styles.formulaTitle}>Caloric Values</Text>
               <Text style={styles.formulaText}>1g Protein = 4 calories</Text>
@@ -183,12 +267,43 @@ export function ProfileScreen() {
           )}
         </ScrollView>
 
-        {/* Bottom Buttons (Edit Mode) */}
-        {isEditing && (
+        {/* Bottom Buttons (Edit Mode for User) */}
+        {isEditingUser && (
           <View style={styles.buttonContainer}>
             <TouchableOpacity
               style={styles.cancelButton}
-              onPress={handleCancel}
+              onPress={handleCancelUser}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.saveButton,
+                (!firstName.trim() || !lastName.trim() || isSaving) && styles.saveButtonDisabled,
+              ]}
+              onPress={handleSaveUser}
+              activeOpacity={0.7}
+              disabled={!firstName.trim() || !lastName.trim() || isSaving}
+            >
+              <Text
+                style={[
+                  styles.saveButtonText,
+                  (!firstName.trim() || !lastName.trim() || isSaving) && styles.saveButtonTextDisabled,
+                ]}
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Bottom Buttons (Edit Mode for Macros) */}
+        {isEditingMacros && (
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={handleCancelMacros}
               activeOpacity={0.7}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -198,7 +313,7 @@ export function ProfileScreen() {
                 styles.saveButton,
                 (!calculator.isValid || isSaving) && styles.saveButtonDisabled,
               ]}
-              onPress={handleSave}
+              onPress={handleSaveMacros}
               activeOpacity={0.7}
               disabled={!calculator.isValid || isSaving}
             >
