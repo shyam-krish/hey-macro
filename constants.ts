@@ -164,7 +164,7 @@ export const mockTargets: MacroTargets = {
   calories: 2700,
   protein: 150,
   carbs: 300,
-  fat: 90,
+  fat: 100,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
@@ -180,7 +180,7 @@ export const mockDailyLog: DailyLog = {
   targetCalories: 2700,
   targetProtein: 150,
   targetCarbs: 300,
-  targetFat: 90,
+  targetFat: 100,
   breakfast: [
     {
       foodEntryID: '1',
