@@ -843,7 +843,6 @@ export function HomeScreen() {
         // Save the food
         await saveParsedFood(dailyLog.dailyLogID, 'default-user');
         if (cancelled) return;
-        reset();
 
         // Wait 2 seconds for a more natural feel
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -855,6 +854,9 @@ export function HomeScreen() {
 
         // Hide loading state (animation will trigger from separate useEffect)
         setIsSavingFood(false);
+
+        // Reset after everything completes (avoid triggering effect cancellation)
+        reset();
       } catch (err) {
         console.error('Error saving food:', err);
         setIsSavingFood(false);
@@ -888,7 +890,6 @@ export function HomeScreen() {
         // Save the food
         await replaceDailyFoodEntries('default-user', dailyLog.dailyLogID, textParsedFood);
         if (cancelled) return;
-        setTextParsedFood(null);
 
         // Wait 2 seconds for a more natural feel
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -900,6 +901,9 @@ export function HomeScreen() {
 
         // Hide loading state (animation will trigger from separate useEffect)
         setIsSavingFood(false);
+
+        // Reset after everything completes (avoid triggering effect cancellation)
+        setTextParsedFood(null);
       } catch (err) {
         console.error('Error saving text food:', err);
         setTextError(err instanceof Error ? err.message : 'Failed to save food');
