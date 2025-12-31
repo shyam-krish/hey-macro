@@ -190,10 +190,12 @@ function StatusIndicator({
   isRecording,
   isProcessing,
   error,
+  inputText,
 }: {
   isRecording: boolean;
   isProcessing: boolean;
   error: string | null;
+  inputText?: string;
 }) {
   const dotOpacity1 = useRef(new Animated.Value(0.3)).current;
   const dotOpacity2 = useRef(new Animated.Value(0.3)).current;
@@ -279,6 +281,12 @@ function StatusIndicator({
           <Animated.Text style={[statusStyles.dot, { opacity: dotOpacity3 }]}>.</Animated.Text>
         </View>
       </View>
+      {/* Show input text when analyzing */}
+      {isProcessing && inputText && (
+        <Text style={statusStyles.inputText} numberOfLines={3}>
+          "{inputText}"
+        </Text>
+      )}
     </View>
   );
 }
@@ -330,6 +338,15 @@ const statusStyles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Avenir Next',
     textAlign: 'center',
+  },
+  inputText: {
+    color: '#aaa',
+    fontSize: 14,
+    fontFamily: 'Avenir Next',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
   },
 });
 
@@ -396,6 +413,7 @@ export function HomeScreen() {
   const {
     isRecording,
     isProcessing,
+    transcript,
     parsedFood,
     error: voiceError,
     startRecording,
@@ -1101,6 +1119,7 @@ export function HomeScreen() {
               isRecording={isRecording}
               isProcessing={isProcessing || isTextProcessing}
               error={voiceError || textError}
+              inputText={isProcessing ? transcript : isTextProcessing ? textInput : undefined}
             />
           )}
 
