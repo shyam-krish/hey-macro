@@ -413,6 +413,18 @@ export function HomeScreen() {
   const hasAnimatedOnStartup = useRef(false);
   const prevDateRef = useRef<string | null>(null);
 
+  // Animated values for numbers
+  const animatedCalories = useRef(new Animated.Value(0)).current;
+  const animatedProtein = useRef(new Animated.Value(0)).current;
+  const animatedCarbs = useRef(new Animated.Value(0)).current;
+  const animatedFat = useRef(new Animated.Value(0)).current;
+
+  // State for displaying animated numbers
+  const [displayedCalories, setDisplayedCalories] = useState(0);
+  const [displayedProtein, setDisplayedProtein] = useState(0);
+  const [displayedCarbs, setDisplayedCarbs] = useState(0);
+  const [displayedFat, setDisplayedFat] = useState(0);
+
   // Store old macro values for incremental animation
   const oldMacrosRef = useRef<{
     calories: number;
@@ -420,6 +432,29 @@ export function HomeScreen() {
     carbs: number;
     fat: number;
   } | null>(null);
+
+  // Set up listeners for animated numbers
+  useEffect(() => {
+    const caloriesListener = animatedCalories.addListener(({ value }) => {
+      setDisplayedCalories(Math.round(value));
+    });
+    const proteinListener = animatedProtein.addListener(({ value }) => {
+      setDisplayedProtein(Math.round(value));
+    });
+    const carbsListener = animatedCarbs.addListener(({ value }) => {
+      setDisplayedCarbs(Math.round(value));
+    });
+    const fatListener = animatedFat.addListener(({ value }) => {
+      setDisplayedFat(Math.round(value));
+    });
+
+    return () => {
+      animatedCalories.removeListener(caloriesListener);
+      animatedProtein.removeListener(proteinListener);
+      animatedCarbs.removeListener(carbsListener);
+      animatedFat.removeListener(fatListener);
+    };
+  }, []);
 
   // Animate slide and macro fill - only on initial app startup
   useEffect(() => {
@@ -432,6 +467,10 @@ export function HomeScreen() {
       proteinAnimProgress.setValue(1);
       carbsAnimProgress.setValue(1);
       fatAnimProgress.setValue(1);
+      animatedCalories.setValue(dailyLog.totalCalories);
+      animatedProtein.setValue(dailyLog.totalProtein);
+      animatedCarbs.setValue(dailyLog.totalCarbs);
+      animatedFat.setValue(dailyLog.totalFat);
       return;
     }
 
@@ -461,6 +500,10 @@ export function HomeScreen() {
       proteinAnimProgress.setValue(1);
       carbsAnimProgress.setValue(1);
       fatAnimProgress.setValue(1);
+      animatedCalories.setValue(dailyLog.totalCalories);
+      animatedProtein.setValue(dailyLog.totalProtein);
+      animatedCarbs.setValue(dailyLog.totalCarbs);
+      animatedFat.setValue(dailyLog.totalFat);
 
       // Still do slide animation if navigating between days
       if (direction !== 'none') {
@@ -481,6 +524,10 @@ export function HomeScreen() {
     proteinAnimProgress.setValue(0);
     carbsAnimProgress.setValue(0);
     fatAnimProgress.setValue(0);
+    animatedCalories.setValue(0);
+    animatedProtein.setValue(0);
+    animatedCarbs.setValue(0);
+    animatedFat.setValue(0);
 
     if (direction !== 'none') {
       // Slide animation: start from off-screen, slide to center
@@ -499,15 +546,29 @@ export function HomeScreen() {
         // Macro fill sequence (slightly delayed)
         Animated.sequence([
           Animated.delay(150),
-          Animated.timing(ringAnimProgress, {
-            toValue: 1,
-            duration: 600,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: false,
-          }),
+          Animated.parallel([
+            Animated.timing(ringAnimProgress, {
+              toValue: 1,
+              duration: 600,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: false,
+            }),
+            Animated.timing(animatedCalories, {
+              toValue: dailyLog.totalCalories,
+              duration: 600,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: false,
+            }),
+          ]),
           Animated.parallel([
             Animated.timing(proteinAnimProgress, {
               toValue: 1,
+              duration: 400,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: false,
+            }),
+            Animated.timing(animatedProtein, {
+              toValue: dailyLog.totalProtein,
               duration: 400,
               easing: Easing.out(Easing.cubic),
               useNativeDriver: false,
@@ -518,8 +579,20 @@ export function HomeScreen() {
               easing: Easing.out(Easing.cubic),
               useNativeDriver: false,
             }),
+            Animated.timing(animatedCarbs, {
+              toValue: dailyLog.totalCarbs,
+              duration: 400,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: false,
+            }),
             Animated.timing(fatAnimProgress, {
               toValue: 1,
+              duration: 400,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: false,
+            }),
+            Animated.timing(animatedFat, {
+              toValue: dailyLog.totalFat,
               duration: 400,
               easing: Easing.out(Easing.cubic),
               useNativeDriver: false,
@@ -530,15 +603,29 @@ export function HomeScreen() {
     } else {
       // No slide, just macro animations (initial load on today)
       Animated.sequence([
-        Animated.timing(ringAnimProgress, {
-          toValue: 1,
-          duration: 800,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: false,
-        }),
+        Animated.parallel([
+          Animated.timing(ringAnimProgress, {
+            toValue: 1,
+            duration: 800,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+          Animated.timing(animatedCalories, {
+            toValue: dailyLog.totalCalories,
+            duration: 800,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+        ]),
         Animated.parallel([
           Animated.timing(proteinAnimProgress, {
             toValue: 1,
+            duration: 600,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+          Animated.timing(animatedProtein, {
+            toValue: dailyLog.totalProtein,
             duration: 600,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: false,
@@ -549,8 +636,20 @@ export function HomeScreen() {
             easing: Easing.out(Easing.cubic),
             useNativeDriver: false,
           }),
+          Animated.timing(animatedCarbs, {
+            toValue: dailyLog.totalCarbs,
+            duration: 600,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
           Animated.timing(fatAnimProgress, {
             toValue: 1,
+            duration: 600,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+          Animated.timing(animatedFat, {
+            toValue: dailyLog.totalFat,
             duration: 600,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: false,
@@ -597,11 +696,21 @@ export function HomeScreen() {
     proteinAnimProgress.setValue(oldProteinProgress);
     carbsAnimProgress.setValue(oldCarbsProgress);
     fatAnimProgress.setValue(oldFatProgress);
+    animatedCalories.setValue(oldMacrosRef.current.calories);
+    animatedProtein.setValue(oldMacrosRef.current.protein);
+    animatedCarbs.setValue(oldMacrosRef.current.carbs);
+    animatedFat.setValue(oldMacrosRef.current.fat);
 
     // Animate to new values
     Animated.parallel([
       Animated.timing(ringAnimProgress, {
         toValue: newCalorieProgress,
+        duration: 600,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.timing(animatedCalories, {
+        toValue: dailyLog.totalCalories,
         duration: 600,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: false,
@@ -612,14 +721,32 @@ export function HomeScreen() {
         easing: Easing.out(Easing.cubic),
         useNativeDriver: false,
       }),
+      Animated.timing(animatedProtein, {
+        toValue: dailyLog.totalProtein,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
       Animated.timing(carbsAnimProgress, {
         toValue: newCarbsProgress,
         duration: 500,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: false,
       }),
+      Animated.timing(animatedCarbs, {
+        toValue: dailyLog.totalCarbs,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
       Animated.timing(fatAnimProgress, {
         toValue: newFatProgress,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.timing(animatedFat, {
+        toValue: dailyLog.totalFat,
         duration: 500,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: false,
@@ -794,7 +921,7 @@ export function HomeScreen() {
           {/* Macro Summary Section */}
           <View style={styles.summarySection}>
             <CalorieRing
-              current={dailyLog.totalCalories}
+              current={displayedCalories}
               target={dailyLog.targetCalories}
               isToday={(() => {
                 const now = new Date();
@@ -806,19 +933,19 @@ export function HomeScreen() {
             <View style={styles.macroProgressBars}>
               <MacroProgressBar
                 label="Protein"
-                current={dailyLog.totalProtein}
+                current={displayedProtein}
                 target={dailyLog.targetProtein}
                 animatedProgress={proteinAnimProgress}
               />
               <MacroProgressBar
                 label="Carbohydrates"
-                current={dailyLog.totalCarbs}
+                current={displayedCarbs}
                 target={dailyLog.targetCarbs}
                 animatedProgress={carbsAnimProgress}
               />
               <MacroProgressBar
                 label="Fat"
-                current={dailyLog.totalFat}
+                current={displayedFat}
                 target={dailyLog.targetFat}
                 animatedProgress={fatAnimProgress}
               />
