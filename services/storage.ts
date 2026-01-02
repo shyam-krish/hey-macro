@@ -505,6 +505,7 @@ export async function addFoodEntry(
 /**
  * Replace all food entries for a daily log with new entries from LLM response
  * This deletes all existing entries and inserts the new complete state
+ * Uses a transaction for better performance (single disk sync)
  */
 export async function replaceDailyFoodEntries(
   userID: string,
@@ -514,35 +515,40 @@ export async function replaceDailyFoodEntries(
   if (!db) throw new Error('Database not initialized');
 
   try {
+    const database = db; // Capture for use in transaction callback
     const now = getCurrentTimestamp();
     const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
 
-    // Delete all existing entries for this daily log
-    await db.runAsync('DELETE FROM food_entries WHERE dailyLogID = ?', [dailyLogID]);
-
-    // Insert all new entries
-    for (const mealType of mealTypes) {
-      const items = foodData[mealType];
-      for (const food of items) {
-        const foodEntryID = uuidv4();
-        await db.runAsync(
-          'INSERT INTO food_entries (foodEntryID, userID, dailyLogID, mealType, name, quantity, calories, protein, carbs, fat, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [foodEntryID, userID, dailyLogID, mealType, food.name, food.quantity, food.calories, food.protein, food.carbs, food.fat, now, now]
-        );
-      }
-    }
-
-    // Update daily log totals
+    // Calculate totals upfront
     const allItems = [...foodData.breakfast, ...foodData.lunch, ...foodData.dinner, ...foodData.snacks];
     const totalCalories = allItems.reduce((sum, item) => sum + item.calories, 0);
     const totalProtein = allItems.reduce((sum, item) => sum + item.protein, 0);
     const totalCarbs = allItems.reduce((sum, item) => sum + item.carbs, 0);
     const totalFat = allItems.reduce((sum, item) => sum + item.fat, 0);
 
-    await db.runAsync(
-      'UPDATE daily_logs SET totalCalories = ?, totalProtein = ?, totalCarbs = ?, totalFat = ?, updatedAt = ? WHERE dailyLogID = ?',
-      [totalCalories, totalProtein, totalCarbs, totalFat, now, dailyLogID]
-    );
+    // Use transaction to batch all operations (single disk sync)
+    await database.withTransactionAsync(async () => {
+      // Delete all existing entries for this daily log
+      await database.runAsync('DELETE FROM food_entries WHERE dailyLogID = ?', [dailyLogID]);
+
+      // Insert all new entries
+      for (const mealType of mealTypes) {
+        const items = foodData[mealType];
+        for (const food of items) {
+          const foodEntryID = uuidv4();
+          await database.runAsync(
+            'INSERT INTO food_entries (foodEntryID, userID, dailyLogID, mealType, name, quantity, calories, protein, carbs, fat, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [foodEntryID, userID, dailyLogID, mealType, food.name, food.quantity, food.calories, food.protein, food.carbs, food.fat, now, now]
+          );
+        }
+      }
+
+      // Update daily log totals
+      await database.runAsync(
+        'UPDATE daily_logs SET totalCalories = ?, totalProtein = ?, totalCarbs = ?, totalFat = ?, updatedAt = ? WHERE dailyLogID = ?',
+        [totalCalories, totalProtein, totalCarbs, totalFat, now, dailyLogID]
+      );
+    });
   } catch (error) {
     console.error('Failed to replace daily food entries:', error);
     throw error;

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useVoiceInput } from './useVoiceInput';
 import { parseFoodInput } from '../services/llm';
 import { replaceDailyFoodEntries } from '../services/storage';
@@ -19,6 +19,7 @@ export interface UseVoiceFoodLoggerResult {
   stopRecordingAndParse: (options?: StopRecordingOptions) => Promise<void>;
   saveParsedFood: (dailyLogID: string, userID: string) => Promise<void>;
   cancelRecording: () => void;
+  cancelProcessing: () => void;
   reset: () => void;
 }
 
@@ -27,6 +28,7 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedFood, setParsedFood] = useState<LLMResponse | null>(null);
   const [llmError, setLlmError] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
 
   const stopRecordingAndParse = useCallback(
     async (options?: StopRecordingOptions) => {
@@ -38,6 +40,10 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
           return;
         }
 
+        console.log(`[Voice] 🎤 Voice input received at ${new Date().toISOString()}`);
+        console.log(`[Voice] Transcript: "${voiceInput.transcript}"`);
+
+        cancelledRef.current = false;
         setIsProcessing(true);
         setLlmError(null);
 
@@ -48,12 +54,19 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
           previousDayLogs: options?.previousDayLogs,
         });
 
-        setParsedFood(result);
+        // Check if cancelled before setting result
+        if (!cancelledRef.current) {
+          setParsedFood(result);
+        }
       } catch (err) {
-        console.error('Error parsing food:', err);
-        setLlmError(err instanceof Error ? err.message : 'Failed to parse food input');
+        if (!cancelledRef.current) {
+          console.error('Error parsing food:', err);
+          setLlmError(err instanceof Error ? err.message : 'Failed to parse food input');
+        }
       } finally {
-        setIsProcessing(false);
+        if (!cancelledRef.current) {
+          setIsProcessing(false);
+        }
       }
     },
     [voiceInput]
@@ -78,6 +91,13 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
     reset();
   }, [voiceInput, reset]);
 
+  const cancelProcessing = useCallback(() => {
+    cancelledRef.current = true;
+    setIsProcessing(false);
+    setLlmError(null);
+    setParsedFood(null);
+  }, []);
+
   return {
     isRecording: voiceInput.isRecording,
     isProcessing,
@@ -88,6 +108,7 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
     stopRecordingAndParse,
     saveParsedFood,
     cancelRecording,
+    cancelProcessing,
     reset,
   };
 }

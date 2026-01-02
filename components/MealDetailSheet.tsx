@@ -7,12 +7,10 @@ import {
   Pressable,
   FlatList,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { FoodEntry } from '../types';
-import { updateFoodEntry } from '../services/storage';
+import { updateFoodEntry, deleteFoodEntry } from '../services/storage';
 
 interface MealDetailSheetProps {
   visible: boolean;
@@ -46,11 +44,150 @@ interface EditFormState {
 
 function FoodItemRow({
   item,
+  isEditing,
+  editForm,
+  saving,
+  error,
   onPress,
+  onEditFormChange,
+  onSave,
+  onCancel,
+  onDelete,
 }: {
   item: FoodEntry;
+  isEditing: boolean;
+  editForm: EditFormState;
+  saving: boolean;
+  error: string | null;
   onPress: () => void;
+  onEditFormChange: (form: EditFormState) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  onDelete: () => void;
 }) {
+  if (isEditing) {
+    return (
+      <View style={styles.foodItemRow}>
+        {/* Delete button - top right */}
+        <Pressable
+          style={styles.deleteButton}
+          onPress={onDelete}
+          disabled={saving}
+          hitSlop={8}
+        >
+          <Ionicons name="trash-outline" size={18} color="#666" />
+        </Pressable>
+
+        {/* Name & Quantity - inline editable */}
+        <View style={styles.foodItemInfo}>
+          <View style={styles.inlineInputGroup}>
+            <TextInput
+              style={styles.inlineNameInput}
+              value={editForm.name}
+              onChangeText={(text) =>
+                onEditFormChange({ ...editForm, name: text })
+              }
+              placeholder="Food name"
+              placeholderTextColor="#666"
+            />
+            <Text style={styles.inlineInputLabel}>NAME</Text>
+          </View>
+          <View style={styles.inlineInputGroup}>
+            <TextInput
+              style={styles.inlineQuantityInput}
+              value={editForm.quantity}
+              onChangeText={(text) =>
+                onEditFormChange({ ...editForm, quantity: text })
+              }
+              placeholder="Quantity"
+              placeholderTextColor="#555"
+            />
+            <Text style={styles.inlineInputLabel}>QUANTITY</Text>
+          </View>
+        </View>
+
+        {/* Macros - same layout as view mode but editable */}
+        <View style={styles.foodItemMacros}>
+          <View style={styles.macroItem}>
+            <TextInput
+              style={styles.inlineMacroInput}
+              value={editForm.calories}
+              onChangeText={(text) =>
+                onEditFormChange({ ...editForm, calories: text })
+              }
+              keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor="#666"
+            />
+            <Text style={styles.macroLabel}>cal</Text>
+          </View>
+          <View style={styles.macroItem}>
+            <TextInput
+              style={styles.inlineMacroInput}
+              value={editForm.protein}
+              onChangeText={(text) =>
+                onEditFormChange({ ...editForm, protein: text })
+              }
+              keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor="#666"
+            />
+            <Text style={styles.macroLabel}>protein</Text>
+          </View>
+          <View style={styles.macroItem}>
+            <TextInput
+              style={styles.inlineMacroInput}
+              value={editForm.carbs}
+              onChangeText={(text) =>
+                onEditFormChange({ ...editForm, carbs: text })
+              }
+              keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor="#666"
+            />
+            <Text style={styles.macroLabel}>carbs</Text>
+          </View>
+          <View style={styles.macroItem}>
+            <TextInput
+              style={styles.inlineMacroInput}
+              value={editForm.fat}
+              onChangeText={(text) =>
+                onEditFormChange({ ...editForm, fat: text })
+              }
+              keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor="#666"
+            />
+            <Text style={styles.macroLabel}>fat</Text>
+          </View>
+        </View>
+
+        {/* Error message */}
+        {error && <Text style={styles.inlineEditError}>{error}</Text>}
+
+        {/* Compact action buttons */}
+        <View style={styles.inlineEditActions}>
+          <Pressable
+            style={styles.inlineCancelButton}
+            onPress={onCancel}
+            disabled={saving}
+          >
+            <Text style={styles.inlineCancelText}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.inlineSaveButton, saving && styles.saveButtonDisabled]}
+            onPress={onSave}
+            disabled={saving}
+          >
+            <Text style={styles.inlineSaveText}>
+              {saving ? 'Saving...' : 'Save'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <Pressable onPress={onPress} style={styles.foodItemRow}>
       <View style={styles.foodItemInfo}>
@@ -97,12 +234,16 @@ export function MealDetailSheet({
     fat: '',
   });
   const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
 
   // Reset edit state when sheet closes
   useEffect(() => {
     if (!visible) {
       setEditingItem(null);
       setSaving(false);
+      setEditError(null);
+      setDeleteConfirmVisible(false);
       setEditForm({
         name: '',
         quantity: '',
@@ -118,6 +259,7 @@ export function MealDetailSheet({
 
   const handleEditPress = (item: FoodEntry) => {
     setEditingItem(item);
+    setEditError(null);
     setEditForm({
       name: item.name,
       quantity: item.quantity,
@@ -130,6 +272,7 @@ export function MealDetailSheet({
 
   const handleCancelEdit = () => {
     setEditingItem(null);
+    setEditError(null);
     setEditForm({
       name: '',
       quantity: '',
@@ -143,156 +286,59 @@ export function MealDetailSheet({
   const handleSaveEdit = async () => {
     if (!editingItem) return;
 
+    // Validate numeric fields
+    const calories = parseInt(editForm.calories, 10);
+    const protein = parseInt(editForm.protein, 10);
+    const carbs = parseInt(editForm.carbs, 10);
+    const fat = parseInt(editForm.fat, 10);
+
+    if (isNaN(calories) || isNaN(protein) || isNaN(carbs) || isNaN(fat)) {
+      setEditError('Calories and macros must be valid numbers');
+      return;
+    }
+
     setSaving(true);
+    setEditError(null);
     try {
       await updateFoodEntry(editingItem.foodEntryID, {
         name: editForm.name,
         quantity: editForm.quantity,
-        calories: parseInt(editForm.calories, 10) || 0,
-        protein: parseInt(editForm.protein, 10) || 0,
-        carbs: parseInt(editForm.carbs, 10) || 0,
-        fat: parseInt(editForm.fat, 10) || 0,
+        calories,
+        protein,
+        carbs,
+        fat,
       });
 
       handleCancelEdit();
       onUpdate?.();
     } catch (error) {
       console.error('Failed to save food entry:', error);
-      // Still close the edit modal on error
-      handleCancelEdit();
+      setEditError('Failed to save changes');
     } finally {
       setSaving(false);
     }
   };
 
-  const renderEditModal = () => (
-    <Modal
-      visible={editingItem !== null}
-      animationType="fade"
-      transparent={true}
-      onRequestClose={handleCancelEdit}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.editOverlay}
-      >
-        <Pressable style={styles.editDismissArea} onPress={handleCancelEdit} />
-        <View style={styles.editContainer}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <Text style={styles.editTitle}>Edit Food</Text>
+  const handleDeletePress = () => {
+    setDeleteConfirmVisible(true);
+  };
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Name</Text>
-              <TextInput
-                style={styles.textInput}
-                value={editForm.name}
-                onChangeText={(text) =>
-                  setEditForm((prev) => ({ ...prev, name: text }))
-                }
-                placeholder="Food name"
-                placeholderTextColor="#666"
-              />
-            </View>
+  const handleDeleteConfirm = async () => {
+    if (!editingItem) return;
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Quantity</Text>
-              <TextInput
-                style={styles.textInput}
-                value={editForm.quantity}
-                onChangeText={(text) =>
-                  setEditForm((prev) => ({ ...prev, quantity: text }))
-                }
-                placeholder="e.g., 1 cup, 100g"
-                placeholderTextColor="#666"
-              />
-            </View>
-
-            <View style={styles.macroInputRow}>
-              <View style={styles.macroInputGroup}>
-                <Text style={styles.inputLabel}>Calories</Text>
-                <TextInput
-                  style={styles.macroInput}
-                  value={editForm.calories}
-                  onChangeText={(text) =>
-                    setEditForm((prev) => ({ ...prev, calories: text }))
-                  }
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor="#666"
-                />
-              </View>
-
-              <View style={styles.macroInputGroup}>
-                <Text style={styles.inputLabel}>Protein (g)</Text>
-                <TextInput
-                  style={styles.macroInput}
-                  value={editForm.protein}
-                  onChangeText={(text) =>
-                    setEditForm((prev) => ({ ...prev, protein: text }))
-                  }
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor="#666"
-                />
-              </View>
-            </View>
-
-            <View style={styles.macroInputRow}>
-              <View style={styles.macroInputGroup}>
-                <Text style={styles.inputLabel}>Carbs (g)</Text>
-                <TextInput
-                  style={styles.macroInput}
-                  value={editForm.carbs}
-                  onChangeText={(text) =>
-                    setEditForm((prev) => ({ ...prev, carbs: text }))
-                  }
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor="#666"
-                />
-              </View>
-
-              <View style={styles.macroInputGroup}>
-                <Text style={styles.inputLabel}>Fat (g)</Text>
-                <TextInput
-                  style={styles.macroInput}
-                  value={editForm.fat}
-                  onChangeText={(text) =>
-                    setEditForm((prev) => ({ ...prev, fat: text }))
-                  }
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor="#666"
-                />
-              </View>
-            </View>
-
-            <View style={styles.editButtonRow}>
-              <Pressable
-                style={styles.cancelButton}
-                onPress={handleCancelEdit}
-                disabled={saving}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-                onPress={handleSaveEdit}
-                disabled={saving}
-              >
-                <Text style={styles.saveButtonText}>
-                  {saving ? 'Saving...' : 'Save'}
-                </Text>
-              </Pressable>
-            </View>
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
+    setDeleteConfirmVisible(false);
+    setSaving(true);
+    try {
+      await deleteFoodEntry(editingItem.foodEntryID);
+      handleCancelEdit();
+      onUpdate?.();
+    } catch (error) {
+      console.error('Failed to delete food entry:', error);
+      setEditError('Failed to delete');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Modal
@@ -319,12 +365,24 @@ export function MealDetailSheet({
             data={entries}
             keyExtractor={(item) => item.foodEntryID}
             renderItem={({ item }) => (
-              <FoodItemRow item={item} onPress={() => handleEditPress(item)} />
+              <FoodItemRow
+                item={item}
+                isEditing={editingItem?.foodEntryID === item.foodEntryID}
+                editForm={editForm}
+                saving={saving}
+                error={editingItem?.foodEntryID === item.foodEntryID ? editError : null}
+                onPress={() => handleEditPress(item)}
+                onEditFormChange={setEditForm}
+                onSave={handleSaveEdit}
+                onCancel={handleCancelEdit}
+                onDelete={handleDeletePress}
+              />
             )}
             ItemSeparatorComponent={() => <View style={styles.foodItemDivider} />}
             style={styles.listContainer}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
           />
 
           {/* Footer with all totals */}
@@ -354,7 +412,36 @@ export function MealDetailSheet({
         </View>
       </View>
 
-      {renderEditModal()}
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={deleteConfirmVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDeleteConfirmVisible(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmContainer}>
+            <Text style={styles.confirmTitle}>Delete Entry?</Text>
+            <Text style={styles.confirmMessage}>
+              This will permanently remove this food entry.
+            </Text>
+            <View style={styles.confirmButtons}>
+              <Pressable
+                style={styles.confirmCancelButton}
+                onPress={() => setDeleteConfirmVisible(false)}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.confirmDeleteButton}
+                onPress={handleDeleteConfirm}
+              >
+                <Text style={styles.confirmDeleteText}>Delete</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -495,103 +582,154 @@ const styles = StyleSheet.create({
     fontFamily: 'Avenir Next',
     textTransform: 'uppercase',
   },
-  // Edit modal styles
-  editOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-  },
-  editDismissArea: {
+  // Inline edit styles
+  deleteButton: {
     position: 'absolute',
-    top: 0,
-    left: 0,
+    top: 20,
     right: 0,
-    bottom: 0,
+    padding: 4,
+    zIndex: 1,
   },
-  editContainer: {
-    backgroundColor: '#1a1a1a',
-    marginHorizontal: 20,
-    borderRadius: 16,
-    padding: 24,
-    maxHeight: '80%',
-  },
-  editTitle: {
-    color: '#fff',
-    fontSize: 22,
-    fontFamily: 'Avenir Next',
-    fontWeight: 'bold',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  inputGroup: {
+  inlineInputGroup: {
     marginBottom: 16,
+    paddingRight: 36,
   },
-  inputLabel: {
-    color: '#888',
-    fontSize: 13,
+  inlineNameInput: {
+    color: '#fff',
+    fontSize: 18,
     fontFamily: 'Avenir Next',
     fontWeight: '600',
-    marginBottom: 8,
+    padding: 0,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444',
+  },
+  inlineQuantityInput: {
+    color: '#888',
+    fontSize: 15,
+    fontFamily: 'Avenir Next',
+    padding: 0,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  inlineInputLabel: {
+    color: '#555',
+    fontSize: 11,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
+    marginTop: 4,
     textTransform: 'uppercase',
   },
-  textInput: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+  inlineMacroInput: {
     color: '#fff',
-    fontSize: 16,
-    fontFamily: 'Avenir Next',
-  },
-  macroInputRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  macroInputGroup: {
-    flex: 1,
-  },
-  macroInput: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: '#fff',
-    fontSize: 16,
-    fontFamily: 'Avenir Next',
+    fontSize: 17,
+    fontFamily: 'DIN Alternate',
+    fontWeight: '600',
+    marginBottom: 2,
+    padding: 0,
     textAlign: 'center',
+    minWidth: 40,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444',
   },
-  editButtonRow: {
+  inlineEditError: {
+    color: '#ff6b6b',
+    fontSize: 12,
+    fontFamily: 'Avenir Next',
+    marginTop: 12,
+  },
+  inlineEditActions: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 8,
+    marginTop: 12,
   },
-  cancelButton: {
+  inlineCancelButton: {
     flex: 1,
     backgroundColor: '#333',
-    borderRadius: 10,
-    paddingVertical: 14,
+    borderRadius: 8,
+    paddingVertical: 10,
     alignItems: 'center',
   },
-  cancelButtonText: {
-    color: '#fff',
-    fontSize: 16,
+  inlineCancelText: {
+    color: '#888',
+    fontSize: 15,
     fontFamily: 'Avenir Next',
     fontWeight: '600',
   },
-  saveButton: {
+  inlineSaveButton: {
     flex: 1,
-    backgroundColor: '#3FE0DB',
-    borderRadius: 10,
-    paddingVertical: 14,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 10,
     alignItems: 'center',
+  },
+  inlineSaveText: {
+    color: '#000',
+    fontSize: 15,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
   },
   saveButtonDisabled: {
     opacity: 0.6,
   },
-  saveButtonText: {
+  // Delete confirmation modal
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmContainer: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 40,
+    width: '80%',
+    maxWidth: 300,
+  },
+  confirmTitle: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  confirmMessage: {
+    color: '#888',
+    fontSize: 14,
+    fontFamily: 'Avenir Next',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmCancelButton: {
+    flex: 1,
+    backgroundColor: '#333',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  confirmCancelText: {
+    color: '#888',
+    fontSize: 15,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
+  },
+  confirmDeleteButton: {
+    flex: 1,
+    backgroundColor: '#dc2626',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  confirmDeleteText: {
+    color: '#fff',
+    fontSize: 15,
     fontFamily: 'Avenir Next',
     fontWeight: '600',
   },

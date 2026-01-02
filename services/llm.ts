@@ -1,22 +1,24 @@
 import { LLMResponse, FoodItem, DailyLog } from '../types';
 import { foodParsingPrompt } from '../constants';
 import { openaiProvider, OPENAI_DEFAULT_MODEL } from './openai';
-import { geminiProvider, GEMINI_DEFAULT_MODEL } from './gemini';
-import { LLMMessage, LLMResponseSchema, LLMProvider } from './llmTypes';
+import { geminiProvider, GEMINI_DEFAULT_MODEL, GEMINI3_DEFAULT_MODEL } from './gemini';
+import { LLMMessage, LLMResponseSchema, LLMProvider, FoodItemParsed, LLMResponseParsed } from './llmTypes';
 
-// Provider selection
-type ProviderType = 'openai' | 'gemini';
+// Provider selection - gemini3 is the recommended default (supports web search + structured output)
+type ProviderType = 'openai' | 'gemini' | 'gemini3';
 
-const DEFAULT_PROVIDER: ProviderType = 'openai';
+// Default to Gemini 3 Flash - best price/performance with web search + structured output
+const DEFAULT_PROVIDER: ProviderType = 'gemini3';
 
 function getProvider(providerType: ProviderType): LLMProvider {
   switch (providerType) {
     case 'openai':
       return openaiProvider;
     case 'gemini':
-      return geminiProvider;
+    case 'gemini3':
+      return geminiProvider; // Same provider, different model
     default:
-      return openaiProvider;
+      return geminiProvider;
   }
 }
 
@@ -26,8 +28,10 @@ function getDefaultModel(providerType: ProviderType): string {
       return OPENAI_DEFAULT_MODEL;
     case 'gemini':
       return GEMINI_DEFAULT_MODEL;
+    case 'gemini3':
+      return GEMINI3_DEFAULT_MODEL;
     default:
-      return OPENAI_DEFAULT_MODEL;
+      return GEMINI3_DEFAULT_MODEL;
   }
 }
 
@@ -38,6 +42,7 @@ interface ParseFoodInputParams {
   previousDayLogs?: DailyLog[];
   provider?: ProviderType;
   model?: string;
+  enableWebSearch?: boolean; // Enable Google Search grounding (default: true for Gemini 3)
 }
 
 export async function parseFoodInput({
@@ -47,32 +52,45 @@ export async function parseFoodInput({
   previousDayLogs,
   provider = DEFAULT_PROVIDER,
   model,
+  enableWebSearch = true,
 }: ParseFoodInputParams): Promise<LLMResponse> {
+  const startTime = Date.now();
+
   try {
     const llmProvider = getProvider(provider);
     const modelToUse = model || getDefaultModel(provider);
     const messages = buildMessages(transcript, currentTime, todayLog, previousDayLogs);
+
+    // Determine if web search should be enabled
+    // Gemini 3 supports web search + structured output together
+    const isGemini3 = modelToUse.includes('gemini-3');
+    const useWebSearch = enableWebSearch && isGemini3;
+
+    console.log(`[LLM] ⏱️ Starting request at ${new Date().toISOString()}`);
+    console.log(`[LLM] Model: ${modelToUse}, webSearch: ${useWebSearch}`);
+    console.log(`[LLM] Transcript: "${transcript}"`);
 
     const result = await llmProvider.generate({
       model: modelToUse,
       messages,
       schema: LLMResponseSchema,
       schemaName: 'food_log_response',
-      webSearch: provider === 'openai', // Only enable web search for OpenAI (Gemini doesn't support it with JSON schema)
+      webSearch: useWebSearch,
       reasoning: {
-        effort: 'low',
+        effort: 'low', // Low thinking for speed, web search provides accuracy
       },
       temperature: 0.3,
       maxTokens: 2000,
     });
 
-    console.log('[LLM] Transcript:', transcript);
-    console.log('[LLM] Response:', JSON.stringify(result, null, 2));
+    const duration = Date.now() - startTime;
+    console.log(`[LLM] ✅ Response received in ${duration}ms (${(duration / 1000).toFixed(2)}s)`);
+    console.log('[LLM] Result:', JSON.stringify(result, null, 2));
 
-    // Validate and normalize the response
     return validateAndNormalizeLLMResponse(result);
   } catch (error) {
-    console.error('Error parsing food input:', error);
+    const duration = Date.now() - startTime;
+    console.error(`[LLM] ❌ Error after ${duration}ms:`, error);
     throw new Error(
       `Failed to parse food input: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
@@ -139,7 +157,7 @@ Transcript: ${transcript}`;
   ];
 }
 
-function validateAndNormalizeLLMResponse(response: any): LLMResponse {
+function validateAndNormalizeLLMResponse(response: LLMResponseParsed): LLMResponse {
   const normalized: LLMResponse = {
     breakfast: [],
     lunch: [],
@@ -151,14 +169,15 @@ function validateAndNormalizeLLMResponse(response: any): LLMResponse {
 
   for (const mealType of mealTypes) {
     if (Array.isArray(response[mealType])) {
-      normalized[mealType] = response[mealType].map((item: any) => validateFoodItem(item));
+      normalized[mealType] = response[mealType].map((item: FoodItemParsed) => validateFoodItem(item));
     }
   }
 
   return normalized;
 }
 
-function validateFoodItem(item: any): FoodItem {
+// Validate and normalize food item for storage
+function validateFoodItem(item: FoodItemParsed): FoodItem {
   if (!item.name || typeof item.name !== 'string') {
     throw new Error('Food item must have a name');
   }

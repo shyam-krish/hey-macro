@@ -73,7 +73,12 @@ function zodToGeminiSchema(schema: z.ZodTypeAny): any {
   return { type: Type.STRING };
 }
 
-// Map reasoning effort to thinking budget
+// Check if model is Gemini 3 (supports web search + structured output together)
+function isGemini3Model(model: string): boolean {
+  return model.includes('gemini-3');
+}
+
+// Map reasoning effort to thinking budget (for Gemini 2.x)
 function getThinkingBudget(effort?: ReasoningEffort): number {
   switch (effort) {
     case 'low':
@@ -87,39 +92,77 @@ function getThinkingBudget(effort?: ReasoningEffort): number {
   }
 }
 
+// Map reasoning effort to thinking level (for Gemini 3.x)
+function getThinkingLevel(effort?: ReasoningEffort): string {
+  switch (effort) {
+    case 'low':
+      return 'low';
+    case 'medium':
+      return 'medium';
+    case 'high':
+      return 'high';
+    default:
+      return 'low'; // Default to low for food parsing
+  }
+}
+
 export const geminiProvider: LLMProvider = {
   async generate<T extends z.ZodType>(config: LLMConfig<T>): Promise<z.infer<T>> {
     try {
       const contents = convertMessages(config.messages);
       const geminiSchema = zodToGeminiSchema(config.schema);
+      const isGemini3 = isGemini3Model(config.model);
 
-      // Note: Gemini doesn't support webSearch with JSON schema together
-      // If webSearch is requested, we can't use responseSchema
-      if (config.webSearch) {
+      // Gemini 3 supports web search + structured output together!
+      // Gemini 2.x does not - web search would be disabled
+      if (config.webSearch && !isGemini3) {
         console.warn(
-          'Gemini does not support web search with JSON schema. Web search will be disabled.'
+          'Gemini 2.x does not support web search with JSON schema. Upgrade to Gemini 3 for this feature.'
         );
+      }
+
+      // Build config based on model version
+      const generateConfig: any = {
+        temperature: config.temperature ?? 0.3,
+        maxOutputTokens: config.maxTokens ?? 2000,
+        responseMimeType: 'application/json',
+        responseSchema: geminiSchema,
+      };
+
+      // Add tools for Gemini 3 with web search
+      if (isGemini3 && config.webSearch) {
+        generateConfig.tools = [{ googleSearch: {} }];
+        // Gemini 3 uses thinkingLevel instead of thinkingBudget
+        generateConfig.thinkingLevel = getThinkingLevel(config.reasoning?.effort);
+        console.log('[Gemini 3] Using Google Search grounding with structured output');
+      } else {
+        // Gemini 2.x uses thinkingBudget
+        generateConfig.thinkingConfig = {
+          thinkingBudget: getThinkingBudget(config.reasoning?.effort),
+          includeThoughts: false,
+        };
       }
 
       const response = await ai.models.generateContent({
         model: config.model,
         contents,
-        config: {
-          temperature: config.temperature ?? 0.3,
-          maxOutputTokens: config.maxTokens ?? 2000,
-          responseMimeType: 'application/json',
-          responseSchema: geminiSchema,
-          thinkingConfig: {
-            thinkingBudget: getThinkingBudget(config.reasoning?.effort),
-            includeThoughts: false,
-          },
-        },
+        config: generateConfig,
       });
 
       const text = response.text;
 
       if (!text) {
         throw new Error('No response text from Gemini');
+      }
+
+      // Log grounding metadata if available (Gemini 3 with search)
+      const metadata = response.candidates?.[0]?.groundingMetadata;
+      if (metadata) {
+        console.log('[Gemini 3] Search queries used:', metadata.webSearchQueries);
+        const sources = metadata.groundingChunks?.map((chunk: any) => chunk.web?.title).filter(Boolean) || [];
+        if (sources.length > 0) {
+          console.log('[Gemini 3] Sources:', sources);
+        }
       }
 
       const parsed = JSON.parse(text);
@@ -135,5 +178,6 @@ export const geminiProvider: LLMProvider = {
   },
 };
 
-// Default model for Gemini
+// Default models
 export const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash';
+export const GEMINI3_DEFAULT_MODEL = 'gemini-3-flash-preview';

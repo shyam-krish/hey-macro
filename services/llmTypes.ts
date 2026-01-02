@@ -24,6 +24,7 @@ export interface LLMConfig<T extends z.ZodType> {
 }
 
 // Zod schemas for food parsing
+// With Gemini 3, web search is always on, so we don't need confidence scoring
 export const FoodItemSchema = z.object({
   name: z.string().describe('Name of the food item'),
   quantity: z.string().describe('Descriptive quantity (e.g., "3 large", "1 cup", "150g")'),

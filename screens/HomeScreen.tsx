@@ -185,15 +185,26 @@ function getMealTotals(entries: FoodEntry[]) {
   );
 }
 
+// Rotating status messages for the analyzing phase
+const ANALYZING_MESSAGES = [
+  'Analyzing',
+  'Calculating macros',
+  'Looking up nutrition',
+  'Crunching numbers',
+  'Estimating portions',
+];
+
 // Animated Status Indicator Component
 function StatusIndicator({
   isRecording,
   isProcessing,
+  isSaving,
   error,
   inputText,
 }: {
   isRecording: boolean;
   isProcessing: boolean;
+  isSaving: boolean;
   error: string | null;
   inputText?: string;
 }) {
@@ -201,15 +212,44 @@ function StatusIndicator({
   const dotOpacity2 = useRef(new Animated.Value(0.3)).current;
   const dotOpacity3 = useRef(new Animated.Value(0.3)).current;
   const isActiveRef = useRef(false);
+  const [messageIndex, setMessageIndex] = useState(0);
 
   // Track active state in ref to avoid stale closure
   useEffect(() => {
-    isActiveRef.current = isRecording || isProcessing;
-  }, [isRecording, isProcessing]);
+    isActiveRef.current = isRecording || isProcessing || isSaving;
+  }, [isRecording, isProcessing, isSaving]);
+
+  // Rotate through analyzing messages
+  useEffect(() => {
+    if (!isProcessing || isSaving) {
+      setMessageIndex(0);
+      return;
+    }
+
+    // Pick a random starting message (not always "Analyzing")
+    const startIndex = Math.floor(Math.random() * ANALYZING_MESSAGES.length);
+    console.log('[StatusIndicator] Setting initial message index:', startIndex, ANALYZING_MESSAGES[startIndex]);
+    setMessageIndex(startIndex);
+
+    // Then rotate every 5 seconds
+    console.log('[StatusIndicator] Setting up interval for message rotation (5000ms)');
+    const interval = setInterval(() => {
+      setMessageIndex((prev) => {
+        const next = (prev + 1) % ANALYZING_MESSAGES.length;
+        console.log('[StatusIndicator] Interval fired - rotating from', prev, 'to', next, '-', ANALYZING_MESSAGES[next]);
+        return next;
+      });
+    }, 5000);
+
+    return () => {
+      console.log('[StatusIndicator] Cleaning up interval');
+      clearInterval(interval);
+    };
+  }, [isProcessing, isSaving]);
 
   // Animate dots in sequence
   useEffect(() => {
-    if (!isRecording && !isProcessing) return;
+    if (!isRecording && !isProcessing && !isSaving) return;
 
     const animateDots = () => {
       // Reset all dots
@@ -249,7 +289,7 @@ function StatusIndicator({
       dotOpacity2.stopAnimation();
       dotOpacity3.stopAnimation();
     };
-  }, [isRecording, isProcessing]);
+  }, [isRecording, isProcessing, isSaving]);
 
   if (error) {
     return (
@@ -259,9 +299,22 @@ function StatusIndicator({
     );
   }
 
-  const isListening = isRecording;
-  const statusText = isListening ? 'Listening' : 'Analyzing';
-  const accentColor = isListening ? '#ff4444' : ACCENT_COLOR;
+  // Determine status text and color based on current state
+  let statusText: string;
+  let accentColor: string;
+
+  if (isRecording) {
+    statusText = 'Listening';
+    accentColor = '#ff4444';
+  } else if (isSaving) {
+    statusText = 'Updating your macros';
+    accentColor = ACCENT_COLOR;
+  } else {
+    statusText = ANALYZING_MESSAGES[messageIndex];
+    accentColor = ACCENT_COLOR;
+  }
+
+  console.log('[StatusIndicator] Rendering - messageIndex:', messageIndex, 'text:', statusText, 'isProcessing:', isProcessing, 'isSaving:', isSaving);
 
   return (
     <View
@@ -274,16 +327,16 @@ function StatusIndicator({
       ]}
     >
       <View style={statusStyles.textRow}>
-        <Text style={statusStyles.text}>{statusText}</Text>
+        <Text key={statusText} style={statusStyles.text}>{statusText}</Text>
         <View style={statusStyles.dotsContainer}>
           <Animated.Text style={[statusStyles.dot, { opacity: dotOpacity1 }]}>.</Animated.Text>
           <Animated.Text style={[statusStyles.dot, { opacity: dotOpacity2 }]}>.</Animated.Text>
           <Animated.Text style={[statusStyles.dot, { opacity: dotOpacity3 }]}>.</Animated.Text>
         </View>
       </View>
-      {/* Show input text when analyzing */}
-      {isProcessing && inputText && (
-        <Text style={statusStyles.inputText} numberOfLines={3}>
+      {/* Show input text when analyzing (not when saving) */}
+      {isProcessing && !isSaving && inputText && (
+        <Text style={statusStyles.inputText}>
           "{inputText}"
         </Text>
       )}
@@ -430,6 +483,7 @@ export function HomeScreen() {
   const [textError, setTextError] = useState<string | null>(null);
   const [previousDayLogs, setPreviousDayLogs] = useState<DailyLog[]>([]);
   const [isSavingFood, setIsSavingFood] = useState(false);
+  const textCancelledRef = useRef(false);
   const {
     isRecording,
     isProcessing,
@@ -439,6 +493,7 @@ export function HomeScreen() {
     startRecording,
     stopRecordingAndParse,
     saveParsedFood,
+    cancelProcessing,
     reset,
   } = useVoiceFoodLogger();
 
@@ -820,7 +875,11 @@ export function HomeScreen() {
   const handleTextSubmit = async () => {
     if (!textInput.trim() || !dailyLog) return;
 
+    console.log(`[Text] ⌨️ Text input received at ${new Date().toISOString()}`);
+    console.log(`[Text] Input: "${textInput.trim()}"`);
+
     setTextInputVisible(false);
+    textCancelledRef.current = false;
     setIsTextProcessing(true);
     setTextError(null);
 
@@ -831,13 +890,35 @@ export function HomeScreen() {
         todayLog: dailyLog,
         previousDayLogs: previousDayLogs.length > 0 ? previousDayLogs : undefined,
       });
-      setTextParsedFood(result);
-      setTextInput('');
+
+      // Check if cancelled before setting result
+      if (!textCancelledRef.current) {
+        setTextParsedFood(result);
+        setTextInput('');
+      }
     } catch (err) {
-      console.error('Error parsing text input:', err);
-      setTextError(err instanceof Error ? err.message : 'Failed to parse food input');
+      if (!textCancelledRef.current) {
+        console.error('Error parsing text input:', err);
+        setTextError(err instanceof Error ? err.message : 'Failed to parse food input');
+      }
     } finally {
+      if (!textCancelledRef.current) {
+        setIsTextProcessing(false);
+      }
+    }
+  };
+
+  const handleCancelAnalysis = () => {
+    // Only allow cancellation during processing/analyzing, not during recording or saving
+    if (isRecording || isSavingFood) return;
+
+    if (isProcessing) {
+      cancelProcessing();
+    }
+    if (isTextProcessing) {
+      textCancelledRef.current = true;
       setIsTextProcessing(false);
+      setTextError(null);
     }
   };
 
@@ -867,10 +948,6 @@ export function HomeScreen() {
 
         // Save the food
         await saveParsedFood(dailyLog.dailyLogID, 'default-user');
-        if (cancelled) return;
-
-        // Wait 2 seconds for a more natural feel
-        await new Promise((resolve) => setTimeout(resolve, 2000));
         if (cancelled) return;
 
         // Refresh data
@@ -921,10 +998,6 @@ export function HomeScreen() {
 
         // Save the food
         await replaceDailyFoodEntries('default-user', dailyLog.dailyLogID, textParsedFood);
-        if (cancelled) return;
-
-        // Wait 2 seconds for a more natural feel
-        await new Promise((resolve) => setTimeout(resolve, 2000));
         if (cancelled) return;
 
         // Refresh data
@@ -1073,28 +1146,9 @@ export function HomeScreen() {
               );
             })()}
 
-            {/* Loading Overlay */}
-            {isSavingFood && (
-              <View style={styles.foodLoadingOverlay}>
-                <View style={styles.foodLoadingContainer}>
-                  <ActivityIndicator size="large" color={ACCENT_COLOR} />
-                  <Text style={styles.foodLoadingText}>Updating macros...</Text>
-                </View>
-              </View>
-            )}
           </View>
         </Animated.View>
         <>
-          {/* Meal Detail Sheet - always mounted to allow proper Modal cleanup */}
-          <MealDetailSheet
-            visible={mealSheetVisible}
-            title={lastSelectedMealRef.current?.title ?? ''}
-            entries={lastSelectedMealRef.current ? dailyLog[lastSelectedMealRef.current.type] : []}
-            onClose={handleCloseMealSheet}
-            onUpdate={refresh}
-            onModalHide={handleMealSheetClosed}
-          />
-
           {/* Calendar Dropdown */}
           <CalendarDropdown
             visible={calendarVisible}
@@ -1107,6 +1161,15 @@ export function HomeScreen() {
             userID={user?.userID || 'default-user'}
             calorieTarget={targets?.calories || 2700}
           />
+
+          {/* Status Backdrop (renders behind buttons) */}
+          {(isRecording || isProcessing || isTextProcessing || isSavingFood || voiceError || textError) && (
+            <TouchableOpacity
+              style={styles.statusBackdrop}
+              activeOpacity={1}
+              onPress={handleCancelAnalysis}
+            />
+          )}
 
           {/* Floating Action Buttons */}
           <LinearGradient
@@ -1151,11 +1214,12 @@ export function HomeScreen() {
             </TouchableOpacity>
           </LinearGradient>
 
-          {/* Status Indicator */}
-          {(isRecording || isProcessing || isTextProcessing || voiceError || textError) && (
+          {/* Status Indicator (renders on top) */}
+          {(isRecording || isProcessing || isTextProcessing || isSavingFood || voiceError || textError) && (
             <StatusIndicator
               isRecording={isRecording}
               isProcessing={isProcessing || isTextProcessing}
+              isSaving={isSavingFood}
               error={voiceError || textError}
               inputText={isProcessing ? transcript : isTextProcessing ? textInput : undefined}
             />
@@ -1217,6 +1281,16 @@ export function HomeScreen() {
         </>
         </>
       )}
+
+      {/* Modals rendered outside loading conditional to prevent unmount during refresh */}
+      <MealDetailSheet
+        visible={mealSheetVisible}
+        title={lastSelectedMealRef.current?.title ?? ''}
+        entries={lastSelectedMealRef.current && dailyLog ? dailyLog[lastSelectedMealRef.current.type] : []}
+        onClose={handleCloseMealSheet}
+        onUpdate={refresh}
+        onModalHide={handleMealSheetClosed}
+      />
     </SafeAreaView>
   );
 }
@@ -1464,6 +1538,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Avenir Next',
   },
 
+  // Status Backdrop for cancellation
+  statusBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+
   // Text Input Bottom Sheet
   modalOverlay: {
     flex: 1,
@@ -1531,24 +1611,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Avenir Next',
     fontWeight: '600',
-  },
-
-  // Food Loading Overlay
-  foodLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  foodLoadingContainer: {
-    alignItems: 'center',
-    gap: 16,
-  },
-  foodLoadingText: {
-    color: '#fff',
-    fontSize: 16,
-    fontFamily: 'Avenir Next',
-    fontWeight: '500',
   },
 });
