@@ -80,7 +80,7 @@ export async function parseFoodInput({
         effort: 'low', // Low thinking for speed, web search provides accuracy
       },
       temperature: 0.3,
-      maxTokens: 2000,
+      // maxTokens: omit to use model default (8192 for Gemini 2.0, 65536 for Gemini 2.5)
     });
 
     const duration = Date.now() - startTime;

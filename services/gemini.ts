@@ -124,7 +124,8 @@ export const geminiProvider: LLMProvider = {
       // Build config based on model version
       const generateConfig: any = {
         temperature: config.temperature ?? 0.3,
-        maxOutputTokens: config.maxTokens ?? 2000,
+        // maxOutputTokens: omit to use model default (8192 for 2.0, 65536 for 2.5+)
+        ...(config.maxTokens && { maxOutputTokens: config.maxTokens }),
         responseMimeType: 'application/json',
         responseSchema: geminiSchema,
       };
@@ -149,11 +150,31 @@ export const geminiProvider: LLMProvider = {
         config: generateConfig,
       });
 
+      // Log response structure for debugging
+      console.log('[Gemini] Response candidates:', response.candidates?.length);
+      console.log('[Gemini] First candidate finish reason:', response.candidates?.[0]?.finishReason);
+
+      // Check for blocked or incomplete responses
+      const finishReason = response.candidates?.[0]?.finishReason;
+      if (finishReason && finishReason !== 'STOP') {
+        console.warn(`[Gemini] Unexpected finish reason: ${finishReason}`);
+
+        if (finishReason === 'MAX_TOKENS') {
+          throw new Error(`MAX_TOKENS: Response truncated at ${generateConfig.maxOutputTokens} tokens. Increase maxOutputTokens.`);
+        } else if (finishReason === 'SAFETY' || finishReason === 'RECITATION') {
+          throw new Error(`${finishReason}: Response blocked by Gemini safety filters`);
+        } else {
+          throw new Error(`INCOMPLETE: finishReason=${finishReason}, candidates=${response.candidates?.length}`);
+        }
+      }
+
       const text = response.text;
 
       if (!text) {
         throw new Error('No response text from Gemini');
       }
+
+      console.log('[Gemini] Response text length:', text.length);
 
       // Log grounding metadata if available (Gemini 3 with search)
       const metadata = response.candidates?.[0]?.groundingMetadata;
@@ -165,7 +186,21 @@ export const geminiProvider: LLMProvider = {
         }
       }
 
-      const parsed = JSON.parse(text);
+      // Parse JSON with better error handling
+      let parsed: any;
+      try {
+        parsed = JSON.parse(text);
+      } catch (parseError) {
+        console.error('[Gemini] Failed to parse JSON response');
+        console.error('[Gemini] Parse error:', parseError);
+        console.error('[Gemini] Response text:', text.substring(0, 500)); // Log first 500 chars
+
+        const errorMsg = parseError instanceof Error ? parseError.message : 'Unknown error';
+        const preview = text.substring(0, 100) + (text.length > 100 ? '...' : '');
+        throw new Error(
+          `JSON Parse error: ${errorMsg} | finishReason=${finishReason || 'none'} | length=${text.length} | preview="${preview}"`
+        );
+      }
 
       // Validate with Zod schema
       return config.schema.parse(parsed) as z.infer<T>;
