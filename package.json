@@ -9,8 +9,8 @@
     "ios:dev": "expo run:ios",
     "web": "expo start --web",
     "clean": "expo prebuild --clean",
-    "eas:build:ios": "eas build --platform ios",
-    "eas:submit:ios": "eas submit --platform ios"
+    "build": "eas build --platform ios",
+    "submit": "eas submit --platform ios"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
