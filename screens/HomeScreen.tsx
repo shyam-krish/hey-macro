@@ -201,12 +201,14 @@ function StatusIndicator({
   isSaving,
   error,
   inputText,
+  onCancel,
 }: {
   isRecording: boolean;
   isProcessing: boolean;
   isSaving: boolean;
   error: string | null;
   inputText?: string;
+  onCancel?: () => void;
 }) {
   const dotOpacity1 = useRef(new Animated.Value(0.3)).current;
   const dotOpacity2 = useRef(new Animated.Value(0.3)).current;
@@ -316,6 +318,9 @@ function StatusIndicator({
 
   console.log('[StatusIndicator] Rendering - messageIndex:', messageIndex, 'text:', statusText, 'isProcessing:', isProcessing, 'isSaving:', isSaving);
 
+  // Show cancel button only during processing (not recording or saving)
+  const showCancel = isProcessing && !isRecording && !isSaving && !error && onCancel;
+
   return (
     <View
       style={[
@@ -339,6 +344,16 @@ function StatusIndicator({
         <Text style={statusStyles.inputText}>
           "{inputText}"
         </Text>
+      )}
+      {/* Cancel button in top right */}
+      {showCancel && (
+        <TouchableOpacity
+          style={statusStyles.cancelButton}
+          onPress={onCancel}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={statusStyles.cancelButtonText}>✕</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -400,6 +415,23 @@ const statusStyles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,
+  },
+  cancelButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    lineHeight: 18,
   },
 });
 
@@ -1162,15 +1194,6 @@ export function HomeScreen() {
             calorieTarget={targets?.calories || 2700}
           />
 
-          {/* Status Backdrop (renders behind buttons) */}
-          {(isRecording || isProcessing || isTextProcessing || isSavingFood || voiceError || textError) && (
-            <TouchableOpacity
-              style={styles.statusBackdrop}
-              activeOpacity={1}
-              onPress={handleCancelAnalysis}
-            />
-          )}
-
           {/* Floating Action Buttons */}
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.8)']}
@@ -1222,6 +1245,7 @@ export function HomeScreen() {
               isSaving={isSavingFood}
               error={voiceError || textError}
               inputText={isProcessing ? transcript : isTextProcessing ? textInput : undefined}
+              onCancel={handleCancelAnalysis}
             />
           )}
 
@@ -1536,12 +1560,6 @@ const styles = StyleSheet.create({
     color: '#444',
     fontSize: 14,
     fontFamily: 'Avenir Next',
-  },
-
-  // Status Backdrop for cancellation
-  statusBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
 
   // Text Input Bottom Sheet
