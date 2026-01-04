@@ -4,11 +4,20 @@ import { LLMConfig, LLMProvider, LLMMessage, ReasoningEffort } from './llmTypes'
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 
+// Request timeout in milliseconds (2 minutes)
+// Gemini 3 with web search can take a while, especially on slow networks
+const REQUEST_TIMEOUT_MS = 120000;
+
 // if (!GEMINI_API_KEY) {
 //   console.warn('GEMINI_API_KEY not found in environment variables');
 // }
 
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY || '' });
+const ai = new GoogleGenAI({
+  apiKey: GEMINI_API_KEY || '',
+  httpOptions: {
+    timeout: REQUEST_TIMEOUT_MS,
+  },
+});
 
 // Convert common message format to Gemini format
 function convertMessages(messages: LLMMessage[]): Content[] {
@@ -108,6 +117,11 @@ function getThinkingLevel(effort?: ReasoningEffort): string {
 
 export const geminiProvider: LLMProvider = {
   async generate<T extends z.ZodType>(config: LLMConfig<T>): Promise<z.infer<T>> {
+    // Check API key before making request
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
+      throw new Error('GEMINI_API_KEY is not configured. Please check your .env file and restart Expo.');
+    }
+
     try {
       const contents = convertMessages(config.messages);
       const geminiSchema = zodToGeminiSchema(config.schema);
@@ -143,6 +157,8 @@ export const geminiProvider: LLMProvider = {
           includeThoughts: false,
         };
       }
+
+      console.log('[Gemini] Making API request to model:', config.model);
 
       const response = await ai.models.generateContent({
         model: config.model,
@@ -205,10 +221,31 @@ export const geminiProvider: LLMProvider = {
       // Validate with Zod schema
       return config.schema.parse(parsed) as z.infer<T>;
     } catch (error) {
-      console.error('Gemini API error:', error);
-      throw new Error(
-        `Gemini API error: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+      console.error('[Gemini] Full error details:', error);
+
+      // Better error messages for common issues
+      if (error instanceof Error) {
+        const errorMsg = error.message.toLowerCase();
+
+        if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+          throw new Error('TIMEOUT_ERROR');
+        }
+
+        if (errorMsg.includes('network request failed')) {
+          // Network request failed is often a timeout in disguise
+          throw new Error('TIMEOUT_ERROR');
+        }
+
+        if (errorMsg.includes('api key') || errorMsg.includes('unauthorized') || errorMsg.includes('403')) {
+          throw new Error(
+            'Invalid API key: Please verify your GEMINI_API_KEY is valid.'
+          );
+        }
+
+        throw new Error(`Gemini API error: ${error.message}`);
+      }
+
+      throw new Error(`Gemini API error: ${JSON.stringify(error)}`);
     }
   },
 };

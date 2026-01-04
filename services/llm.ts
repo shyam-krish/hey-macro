@@ -67,7 +67,7 @@ export async function parseFoodInput({
     const useWebSearch = enableWebSearch && isGemini3;
 
     console.log(`[LLM] ⏱️ Starting request at ${new Date().toISOString()}`);
-    console.log(`[LLM] Model: ${modelToUse}, webSearch: ${useWebSearch}`);
+    console.log(`[LLM] Provider: ${provider}, Model: ${modelToUse}, webSearch: ${useWebSearch}`);
     console.log(`[LLM] Transcript: "${transcript}"`);
 
     const result = await llmProvider.generate({
@@ -91,6 +91,14 @@ export async function parseFoodInput({
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error(`[LLM] ❌ Error after ${duration}ms:`, error);
+
+    // Handle timeout errors with user-friendly message
+    if (error instanceof Error && error.message === 'TIMEOUT_ERROR') {
+      throw new Error(
+        'Request took too long to process. Try breaking up your description into smaller parts and logging them separately.'
+      );
+    }
+
     throw new Error(
       `Failed to parse food input: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
