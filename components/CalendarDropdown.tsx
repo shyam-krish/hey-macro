@@ -59,11 +59,16 @@ function CalorieRing({
       // Today: turquoise accent until 150+ over target, then dark red
       return diff > 150 ? '#991b1b' : ACCENT_COLOR;
     } else {
-      // Past days: color based on how close to target (dark shades)
-      const absDiff = Math.abs(diff);
-      if (absDiff <= 150) return '#065f46'; // Dark green - nailed it
-      if (absDiff <= 300) return '#92400e'; // Dark amber - close enough
-      return '#991b1b'; // Dark red - significantly off
+      // Past days: color based on difference from target
+      if (diff < 0) {
+        // Under target: white
+        return '#ffffff';
+      } else {
+        // Over target: green/amber/red based on how much over
+        if (diff <= 150) return '#065f46'; // Dark green - nailed it
+        if (diff <= 300) return '#92400e'; // Dark amber - close enough
+        return '#991b1b'; // Dark red - significantly over
+      }
     }
   };
 

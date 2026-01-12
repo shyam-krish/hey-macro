@@ -33,22 +33,23 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
   const stopRecordingAndParse = useCallback(
     async (options?: StopRecordingOptions) => {
       try {
-        await voiceInput.stopRecording();
+        // stopRecording now waits for final results and returns the transcript
+        const finalTranscript = await voiceInput.stopRecording();
 
         // If no transcript, just silently return - the voice error handler will deal with it
-        if (!voiceInput.transcript) {
+        if (!finalTranscript) {
           return;
         }
 
         console.log(`[Voice] 🎤 Voice input received at ${new Date().toISOString()}`);
-        console.log(`[Voice] Transcript: "${voiceInput.transcript}"`);
+        console.log(`[Voice] Transcript: "${finalTranscript}"`);
 
         cancelledRef.current = false;
         setIsProcessing(true);
         setLlmError(null);
 
         const result = await parseFoodInput({
-          transcript: voiceInput.transcript,
+          transcript: finalTranscript,
           currentTime: new Date(),
           todayLog: options?.todayLog,
           previousDayLogs: options?.previousDayLogs,

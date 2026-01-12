@@ -202,6 +202,7 @@ function StatusIndicator({
   error,
   inputText,
   onCancel,
+  onDismissError,
 }: {
   isRecording: boolean;
   isProcessing: boolean;
@@ -209,6 +210,7 @@ function StatusIndicator({
   error: string | null;
   inputText?: string;
   onCancel?: () => void;
+  onDismissError?: () => void;
 }) {
   const dotOpacity1 = useRef(new Animated.Value(0.3)).current;
   const dotOpacity2 = useRef(new Animated.Value(0.3)).current;
@@ -297,6 +299,15 @@ function StatusIndicator({
     return (
       <View style={[statusStyles.container, statusStyles.errorContainer]}>
         <Text style={statusStyles.errorText}>{error}</Text>
+        {onDismissError && (
+          <TouchableOpacity
+            style={statusStyles.dismissButton}
+            onPress={onDismissError}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={statusStyles.dismissButtonText}>✕</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -433,6 +444,23 @@ const statusStyles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 18,
   },
+  dismissButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 107, 107, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dismissButtonText: {
+    color: '#ff6b6b',
+    fontSize: 18,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
 });
 
 // Meal Card Component
@@ -538,6 +566,13 @@ export function HomeScreen() {
   const hasAnimatedOnStartup = useRef(false);
   const prevDateRef = useRef<string | null>(null);
 
+  // Animation values for meal cards (staggered drop-down)
+  const foodTitleAnim = useRef(new Animated.Value(0)).current;
+  const breakfastAnim = useRef(new Animated.Value(0)).current;
+  const lunchAnim = useRef(new Animated.Value(0)).current;
+  const dinnerAnim = useRef(new Animated.Value(0)).current;
+  const snacksAnim = useRef(new Animated.Value(0)).current;
+
   // Animated values for numbers
   const animatedCalories = useRef(new Animated.Value(0)).current;
   const animatedProtein = useRef(new Animated.Value(0)).current;
@@ -596,6 +631,12 @@ export function HomeScreen() {
       animatedProtein.setValue(dailyLog.totalProtein);
       animatedCarbs.setValue(dailyLog.totalCarbs);
       animatedFat.setValue(dailyLog.totalFat);
+      // Show meal cards immediately
+      foodTitleAnim.setValue(1);
+      breakfastAnim.setValue(1);
+      lunchAnim.setValue(1);
+      dinnerAnim.setValue(1);
+      snacksAnim.setValue(1);
       return;
     }
 
@@ -629,6 +670,12 @@ export function HomeScreen() {
       animatedProtein.setValue(dailyLog.totalProtein);
       animatedCarbs.setValue(dailyLog.totalCarbs);
       animatedFat.setValue(dailyLog.totalFat);
+      // Show meal cards immediately for past days
+      foodTitleAnim.setValue(1);
+      breakfastAnim.setValue(1);
+      lunchAnim.setValue(1);
+      dinnerAnim.setValue(1);
+      snacksAnim.setValue(1);
 
       // Still do slide animation if navigating between days
       if (direction !== 'none') {
@@ -653,6 +700,12 @@ export function HomeScreen() {
     animatedProtein.setValue(0);
     animatedCarbs.setValue(0);
     animatedFat.setValue(0);
+    // Reset meal card animations
+    foodTitleAnim.setValue(0);
+    breakfastAnim.setValue(0);
+    lunchAnim.setValue(0);
+    dinnerAnim.setValue(0);
+    snacksAnim.setValue(0);
 
     if (direction !== 'none') {
       // Slide animation: start from off-screen, slide to center
@@ -727,6 +780,7 @@ export function HomeScreen() {
       ]).start();
     } else {
       // No slide, just macro animations (initial load on today)
+      // Then staggered meal card drop-down animations
       Animated.sequence([
         Animated.parallel([
           Animated.timing(ringAnimProgress, {
@@ -778,6 +832,39 @@ export function HomeScreen() {
             duration: 600,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: false,
+          }),
+        ]),
+        // Staggered meal card drop-down animations
+        Animated.stagger(80, [
+          Animated.timing(foodTitleAnim, {
+            toValue: 1,
+            duration: 350,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(breakfastAnim, {
+            toValue: 1,
+            duration: 350,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(lunchAnim, {
+            toValue: 1,
+            duration: 350,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(dinnerAnim, {
+            toValue: 1,
+            duration: 350,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(snacksAnim, {
+            toValue: 1,
+            duration: 350,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
           }),
         ]),
       ]).start();
@@ -954,6 +1041,11 @@ export function HomeScreen() {
     }
   };
 
+  const handleDismissError = () => {
+    reset(); // Clears voice errors
+    setTextError(null); // Clears text errors
+  };
+
   // Save parsed food from voice to database when available
   useEffect(() => {
     if (!parsedFood || !dailyLog) return;
@@ -1122,49 +1214,88 @@ export function HomeScreen() {
                 dailyLog.dinner.length > 0 ||
                 dailyLog.snacks.length > 0;
 
+              // Helper function to create animated style for meal cards
+              const getMealAnimStyle = (animValue: Animated.Value) => ({
+                opacity: animValue,
+                transform: [{
+                  translateY: animValue.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 0],
+                  }),
+                }],
+              });
+
               const content = (
                 <>
-                  <Text style={styles.foodSectionTitle}>Food</Text>
+                  <Animated.Text
+                    style={[
+                      styles.foodSectionTitle,
+                      {
+                        opacity: foodTitleAnim,
+                        transform: [{
+                          translateY: foodTitleAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [-20, 0],
+                          }),
+                        }],
+                      },
+                    ]}
+                  >
+                    Food
+                  </Animated.Text>
                   {hasFood ? (
                     <>
                       {dailyLog.breakfast.length > 0 && (
-                        <MealCard
-                          title="Breakfast"
-                          entries={dailyLog.breakfast}
-                          onPress={() => setSelectedMeal({ title: 'Breakfast', type: 'breakfast' })}
-                        />
+                        <Animated.View style={getMealAnimStyle(breakfastAnim)}>
+                          <MealCard
+                            title="Breakfast"
+                            entries={dailyLog.breakfast}
+                            onPress={() => setSelectedMeal({ title: 'Breakfast', type: 'breakfast' })}
+                          />
+                        </Animated.View>
                       )}
                       {dailyLog.lunch.length > 0 && (
-                        <MealCard
-                          title="Lunch"
-                          entries={dailyLog.lunch}
-                          onPress={() => setSelectedMeal({ title: 'Lunch', type: 'lunch' })}
-                        />
+                        <Animated.View style={getMealAnimStyle(lunchAnim)}>
+                          <MealCard
+                            title="Lunch"
+                            entries={dailyLog.lunch}
+                            onPress={() => setSelectedMeal({ title: 'Lunch', type: 'lunch' })}
+                          />
+                        </Animated.View>
                       )}
                       {dailyLog.dinner.length > 0 && (
-                        <MealCard
-                          title="Dinner"
-                          entries={dailyLog.dinner}
-                          onPress={() => setSelectedMeal({ title: 'Dinner', type: 'dinner' })}
-                        />
+                        <Animated.View style={getMealAnimStyle(dinnerAnim)}>
+                          <MealCard
+                            title="Dinner"
+                            entries={dailyLog.dinner}
+                            onPress={() => setSelectedMeal({ title: 'Dinner', type: 'dinner' })}
+                          />
+                        </Animated.View>
                       )}
                       {dailyLog.snacks.length > 0 && (
-                        <MealCard
-                          title="Snacks"
-                          entries={dailyLog.snacks}
-                          onPress={() => setSelectedMeal({ title: 'Snacks', type: 'snacks' })}
-                        />
+                        <Animated.View style={getMealAnimStyle(snacksAnim)}>
+                          <MealCard
+                            title="Snacks"
+                            entries={dailyLog.snacks}
+                            onPress={() => setSelectedMeal({ title: 'Snacks', type: 'snacks' })}
+                          />
+                        </Animated.View>
                       )}
                       {/* Bottom padding for floating buttons */}
                       <View style={{ height: 100 }} />
                     </>
                   ) : (
-                    <View style={styles.emptyStateContainer}>
+                    <Animated.View
+                      style={[
+                        styles.emptyStateContainer,
+                        getMealAnimStyle(breakfastAnim),
+                      ]}
+                    >
                       <Text style={styles.emptyStateText}>No food logged yet</Text>
                       <Text style={styles.emptyStateSubtext}>
                         Tap the mic button to get started
                       </Text>
-                    </View>
+                    </Animated.View>
                   )}
                 </>
               );
@@ -1246,6 +1377,7 @@ export function HomeScreen() {
               error={voiceError || textError}
               inputText={isProcessing ? transcript : isTextProcessing ? textInput : undefined}
               onCancel={handleCancelAnalysis}
+              onDismissError={handleDismissError}
             />
           )}
 

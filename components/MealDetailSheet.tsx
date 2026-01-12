@@ -42,6 +42,32 @@ interface EditFormState {
   fat: string;
 }
 
+// Calculate calories from macros: protein*4 + carbs*4 + fat*9
+function calculateCaloriesFromMacros(protein: number, carbs: number, fat: number): number {
+  return Math.round(protein * 4 + carbs * 4 + fat * 9);
+}
+
+// Scale macros proportionally to match a new calorie target
+function scaleMacrosToCalories(
+  originalProtein: number,
+  originalCarbs: number,
+  originalFat: number,
+  originalCalories: number,
+  newCalories: number
+): { protein: number; carbs: number; fat: number } {
+  if (originalCalories === 0) {
+    // Can't scale from zero - return zeros
+    return { protein: 0, carbs: 0, fat: 0 };
+  }
+
+  const ratio = newCalories / originalCalories;
+  return {
+    protein: Math.round(originalProtein * ratio),
+    carbs: Math.round(originalCarbs * ratio),
+    fat: Math.round(originalFat * ratio),
+  };
+}
+
 function FoodItemRow({
   item,
   isEditing,
@@ -60,7 +86,7 @@ function FoodItemRow({
   saving: boolean;
   error: string | null;
   onPress: () => void;
-  onEditFormChange: (form: EditFormState) => void;
+  onEditFormChange: (form: EditFormState, changedField?: string) => void;
   onSave: () => void;
   onCancel: () => void;
   onDelete: () => void;
@@ -113,7 +139,7 @@ function FoodItemRow({
               style={styles.inlineMacroInput}
               value={editForm.calories}
               onChangeText={(text) =>
-                onEditFormChange({ ...editForm, calories: text })
+                onEditFormChange({ ...editForm, calories: text }, 'calories')
               }
               keyboardType="number-pad"
               placeholder="0"
@@ -122,42 +148,51 @@ function FoodItemRow({
             <Text style={styles.macroLabel}>cal</Text>
           </View>
           <View style={styles.macroItem}>
-            <TextInput
-              style={styles.inlineMacroInput}
-              value={editForm.protein}
-              onChangeText={(text) =>
-                onEditFormChange({ ...editForm, protein: text })
-              }
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor="#666"
-            />
+            <View style={styles.macroInputRow}>
+              <TextInput
+                style={styles.inlineMacroInput}
+                value={editForm.protein}
+                onChangeText={(text) =>
+                  onEditFormChange({ ...editForm, protein: text }, 'protein')
+                }
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor="#666"
+              />
+              <Text style={styles.macroUnitSuffix}>g</Text>
+            </View>
             <Text style={styles.macroLabel}>protein</Text>
           </View>
           <View style={styles.macroItem}>
-            <TextInput
-              style={styles.inlineMacroInput}
-              value={editForm.carbs}
-              onChangeText={(text) =>
-                onEditFormChange({ ...editForm, carbs: text })
-              }
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor="#666"
-            />
+            <View style={styles.macroInputRow}>
+              <TextInput
+                style={styles.inlineMacroInput}
+                value={editForm.carbs}
+                onChangeText={(text) =>
+                  onEditFormChange({ ...editForm, carbs: text }, 'carbs')
+                }
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor="#666"
+              />
+              <Text style={styles.macroUnitSuffix}>g</Text>
+            </View>
             <Text style={styles.macroLabel}>carbs</Text>
           </View>
           <View style={styles.macroItem}>
-            <TextInput
-              style={styles.inlineMacroInput}
-              value={editForm.fat}
-              onChangeText={(text) =>
-                onEditFormChange({ ...editForm, fat: text })
-              }
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor="#666"
-            />
+            <View style={styles.macroInputRow}>
+              <TextInput
+                style={styles.inlineMacroInput}
+                value={editForm.fat}
+                onChangeText={(text) =>
+                  onEditFormChange({ ...editForm, fat: text }, 'fat')
+                }
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor="#666"
+              />
+              <Text style={styles.macroUnitSuffix}>g</Text>
+            </View>
             <Text style={styles.macroLabel}>fat</Text>
           </View>
         </View>
@@ -233,6 +268,13 @@ export function MealDetailSheet({
     carbs: '',
     fat: '',
   });
+  // Track original numeric values when editing starts (for detecting what changed)
+  const [originalMacros, setOriginalMacros] = useState<{
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
@@ -244,6 +286,7 @@ export function MealDetailSheet({
       setSaving(false);
       setEditError(null);
       setDeleteConfirmVisible(false);
+      setOriginalMacros(null);
       setEditForm({
         name: '',
         quantity: '',
@@ -260,6 +303,13 @@ export function MealDetailSheet({
   const handleEditPress = (item: FoodEntry) => {
     setEditingItem(item);
     setEditError(null);
+    // Store original macros for comparison when values change
+    setOriginalMacros({
+      calories: item.calories,
+      protein: item.protein,
+      carbs: item.carbs,
+      fat: item.fat,
+    });
     setEditForm({
       name: item.name,
       quantity: item.quantity,
@@ -273,6 +323,7 @@ export function MealDetailSheet({
   const handleCancelEdit = () => {
     setEditingItem(null);
     setEditError(null);
+    setOriginalMacros(null);
     setEditForm({
       name: '',
       quantity: '',
@@ -281,6 +332,62 @@ export function MealDetailSheet({
       carbs: '',
       fat: '',
     });
+  };
+
+  // Smart form change handler that syncs calories <-> macros
+  const handleEditFormChange = (newForm: EditFormState, changedField?: string) => {
+    if (!originalMacros) {
+      setEditForm(newForm);
+      return;
+    }
+
+    // Parse current values
+    const protein = parseInt(newForm.protein, 10) || 0;
+    const carbs = parseInt(newForm.carbs, 10) || 0;
+    const fat = parseInt(newForm.fat, 10) || 0;
+    const calories = parseInt(newForm.calories, 10) || 0;
+
+    // Detect which field changed by comparing to current form
+    const caloriesChanged = changedField === 'calories' ||
+      (newForm.calories !== editForm.calories && changedField !== 'protein' && changedField !== 'carbs' && changedField !== 'fat');
+    const macrosChanged = changedField === 'protein' || changedField === 'carbs' || changedField === 'fat' ||
+      (newForm.protein !== editForm.protein || newForm.carbs !== editForm.carbs || newForm.fat !== editForm.fat);
+
+    if (caloriesChanged && !macrosChanged) {
+      // Calories was edited - scale macros proportionally
+      const currentMacroCalories = calculateCaloriesFromMacros(
+        parseInt(editForm.protein, 10) || 0,
+        parseInt(editForm.carbs, 10) || 0,
+        parseInt(editForm.fat, 10) || 0
+      );
+
+      if (currentMacroCalories > 0 && calories > 0) {
+        const scaled = scaleMacrosToCalories(
+          parseInt(editForm.protein, 10) || 0,
+          parseInt(editForm.carbs, 10) || 0,
+          parseInt(editForm.fat, 10) || 0,
+          currentMacroCalories,
+          calories
+        );
+        setEditForm({
+          ...newForm,
+          protein: String(scaled.protein),
+          carbs: String(scaled.carbs),
+          fat: String(scaled.fat),
+        });
+        return;
+      }
+    } else if (macrosChanged) {
+      // A macro was edited - recalculate calories
+      const newCalories = calculateCaloriesFromMacros(protein, carbs, fat);
+      setEditForm({
+        ...newForm,
+        calories: String(newCalories),
+      });
+      return;
+    }
+
+    setEditForm(newForm);
   };
 
   const handleSaveEdit = async () => {
@@ -372,7 +479,7 @@ export function MealDetailSheet({
                 saving={saving}
                 error={editingItem?.foodEntryID === item.foodEntryID ? editError : null}
                 onPress={() => handleEditPress(item)}
-                onEditFormChange={setEditForm}
+                onEditFormChange={handleEditFormChange}
                 onSave={handleSaveEdit}
                 onCancel={handleCancelEdit}
                 onDelete={handleDeletePress}
@@ -629,9 +736,22 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     padding: 0,
     textAlign: 'center',
-    minWidth: 40,
+    minWidth: 30,
     borderBottomWidth: 1,
     borderBottomColor: '#444',
+  },
+  macroInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  macroUnitSuffix: {
+    color: '#fff',
+    fontSize: 17,
+    fontFamily: 'DIN Alternate',
+    fontWeight: '600',
+    marginBottom: 2,
+    marginLeft: 1,
   },
   inlineEditError: {
     color: '#ff6b6b',

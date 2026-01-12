@@ -4,9 +4,9 @@ import { LLMConfig, LLMProvider, LLMMessage, ReasoningEffort } from './llmTypes'
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 
-// Request timeout in milliseconds (2 minutes)
+// Request timeout in milliseconds (5 minutes)
 // Gemini 3 with web search can take a while, especially on slow networks
-const REQUEST_TIMEOUT_MS = 120000;
+const REQUEST_TIMEOUT_MS = 300000;
 
 // if (!GEMINI_API_KEY) {
 //   console.warn('GEMINI_API_KEY not found in environment variables');
