@@ -92,13 +92,7 @@ export async function parseFoodInput({
     const duration = Date.now() - startTime;
     console.error(`[LLM] ❌ Error after ${duration}ms:`, error);
 
-    // Handle timeout errors with user-friendly message
-    if (error instanceof Error && error.message === 'TIMEOUT_ERROR') {
-      throw new Error(
-        'Request took too long to process. Try breaking up your description into smaller parts and logging them separately.'
-      );
-    }
-
+    // Pass through raw error messages for debugging (personal app)
     throw new Error(
       `Failed to parse food input: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
