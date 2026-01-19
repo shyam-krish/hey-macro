@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { useVoiceInput } from './useVoiceInput';
 import { parseFoodInput } from '../services/llm';
 import { replaceDailyFoodEntries } from '../services/storage';
@@ -29,6 +30,27 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
   const [parsedFood, setParsedFood] = useState<LLMResponse | null>(null);
   const [llmError, setLlmError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
+  const wasBackgroundedDuringProcessing = useRef(false);
+
+  // Monitor app state to detect backgrounding during processing
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      // If app is backgrounded while processing, mark it
+      if (nextAppState === 'background' && isProcessing) {
+        console.log('[VoiceFoodLogger] App backgrounded during processing - request may fail');
+        wasBackgroundedDuringProcessing.current = true;
+      }
+
+      // If app returns to foreground, reset the flag
+      if (nextAppState === 'active' && wasBackgroundedDuringProcessing.current) {
+        console.log('[VoiceFoodLogger] App returned to foreground after backgrounding during processing');
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isProcessing]);
 
   const stopRecordingAndParse = useCallback(
     async (options?: StopRecordingOptions) => {
@@ -62,7 +84,16 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
       } catch (err) {
         if (!cancelledRef.current) {
           console.error('Error parsing food:', err);
-          setLlmError(err instanceof Error ? err.message : 'Failed to parse food input');
+
+          // If app was backgrounded during processing, provide helpful context
+          let errorMessage = err instanceof Error ? err.message : 'Failed to parse food input';
+          if (wasBackgroundedDuringProcessing.current) {
+            console.log('[VoiceFoodLogger] Error occurred after app was backgrounded');
+            errorMessage = 'Request failed because app was backgrounded. Keep the app open while processing.';
+          }
+
+          setLlmError(errorMessage);
+          wasBackgroundedDuringProcessing.current = false;
         }
       } finally {
         if (!cancelledRef.current) {

@@ -15,6 +15,8 @@ import {
   Animated,
   Easing,
   useWindowDimensions,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -544,6 +546,7 @@ export function HomeScreen() {
   const [previousDayLogs, setPreviousDayLogs] = useState<DailyLog[]>([]);
   const [isSavingFood, setIsSavingFood] = useState(false);
   const textCancelledRef = useRef(false);
+  const textWasBackgroundedDuringProcessing = useRef(false);
   const {
     isRecording,
     isProcessing,
@@ -978,6 +981,26 @@ export function HomeScreen() {
       .catch((err) => console.error('Failed to fetch previous logs:', err));
   }, [user]);
 
+  // Monitor app state for text input processing
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      // If app is backgrounded while processing text input, mark it
+      if (nextAppState === 'background' && isTextProcessing) {
+        console.log('[HomeScreen] App backgrounded during text processing - request may fail');
+        textWasBackgroundedDuringProcessing.current = true;
+      }
+
+      // If app returns to foreground, reset the flag
+      if (nextAppState === 'active' && textWasBackgroundedDuringProcessing.current) {
+        console.log('[HomeScreen] App returned to foreground after backgrounding during text processing');
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isTextProcessing]);
+
   const handleMicPress = async () => {
     if (isRecording) {
       // Stop recording and parse with today's log and previous days for context
@@ -1018,7 +1041,16 @@ export function HomeScreen() {
     } catch (err) {
       if (!textCancelledRef.current) {
         console.error('Error parsing text input:', err);
-        setTextError(err instanceof Error ? err.message : 'Failed to parse food input');
+
+        // If app was backgrounded during processing, provide helpful context
+        let errorMessage = err instanceof Error ? err.message : 'Failed to parse food input';
+        if (textWasBackgroundedDuringProcessing.current) {
+          console.log('[HomeScreen] Error occurred after app was backgrounded during text processing');
+          errorMessage = 'Request failed because app was backgrounded. Keep the app open while processing.';
+        }
+
+        setTextError(errorMessage);
+        textWasBackgroundedDuringProcessing.current = false;
       }
     } finally {
       if (!textCancelledRef.current) {
