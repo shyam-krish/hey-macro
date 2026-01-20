@@ -68,12 +68,34 @@ function scaleMacrosToCalories(
   };
 }
 
+// Parse quantity string into number and unit (e.g., "100g" -> { number: 100, unit: "g" })
+function parseQuantity(quantity: string): { number: number | null; unit: string } {
+  const trimmed = quantity.trim();
+  // Match number at start (including decimals) followed by optional unit
+  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+  if (match) {
+    return {
+      number: parseFloat(match[1]),
+      unit: match[2] || '',
+    };
+  }
+  // No number found - return null number with full string as "unit"
+  return { number: null, unit: trimmed };
+}
+
+// Format quantity from number and unit
+function formatQuantity(num: number | null, unit: string): string {
+  if (num === null) return unit;
+  return unit ? `${num}${unit}` : String(num);
+}
+
 function FoodItemRow({
   item,
   isEditing,
   editForm,
   saving,
   error,
+  quantityUnit,
   onPress,
   onEditFormChange,
   onSave,
@@ -85,6 +107,7 @@ function FoodItemRow({
   editForm: EditFormState;
   saving: boolean;
   error: string | null;
+  quantityUnit: string;
   onPress: () => void;
   onEditFormChange: (form: EditFormState, changedField?: string) => void;
   onSave: () => void;
@@ -119,15 +142,21 @@ function FoodItemRow({
             <Text style={styles.inlineInputLabel}>NAME</Text>
           </View>
           <View style={styles.inlineInputGroup}>
-            <TextInput
-              style={styles.inlineQuantityInput}
-              value={editForm.quantity}
-              onChangeText={(text) =>
-                onEditFormChange({ ...editForm, quantity: text })
-              }
-              placeholder="Quantity"
-              placeholderTextColor="#555"
-            />
+            <View style={styles.quantityInputRow}>
+              <TextInput
+                style={styles.inlineQuantityInput}
+                value={editForm.quantity}
+                onChangeText={(text) =>
+                  onEditFormChange({ ...editForm, quantity: text }, 'quantity')
+                }
+                placeholder="0"
+                placeholderTextColor="#555"
+                keyboardType={quantityUnit ? 'number-pad' : 'default'}
+              />
+              {quantityUnit ? (
+                <Text style={styles.quantityUnitSuffix}>{quantityUnit}</Text>
+              ) : null}
+            </View>
             <Text style={styles.inlineInputLabel}>QUANTITY</Text>
           </View>
         </View>
@@ -268,12 +297,14 @@ export function MealDetailSheet({
     carbs: '',
     fat: '',
   });
-  // Track original numeric values when editing starts (for detecting what changed)
+  // Track original numeric values when editing starts (for stable scaling)
   const [originalMacros, setOriginalMacros] = useState<{
     calories: number;
     protein: number;
     carbs: number;
     fat: number;
+    quantityNumber: number | null;
+    quantityUnit: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -303,16 +334,20 @@ export function MealDetailSheet({
   const handleEditPress = (item: FoodEntry) => {
     setEditingItem(item);
     setEditError(null);
-    // Store original macros for comparison when values change
+    // Parse quantity into number and unit for scaling
+    const parsedQuantity = parseQuantity(item.quantity);
+    // Store original macros and quantity for stable scaling
     setOriginalMacros({
       calories: item.calories,
       protein: item.protein,
       carbs: item.carbs,
       fat: item.fat,
+      quantityNumber: parsedQuantity.number,
+      quantityUnit: parsedQuantity.unit,
     });
     setEditForm({
       name: item.name,
-      quantity: item.quantity,
+      quantity: parsedQuantity.number !== null ? String(parsedQuantity.number) : item.quantity,
       calories: String(item.calories),
       protein: String(item.protein),
       carbs: String(item.carbs),
@@ -334,7 +369,7 @@ export function MealDetailSheet({
     });
   };
 
-  // Smart form change handler that syncs calories <-> macros
+  // Smart form change handler that syncs calories <-> macros <-> quantity
   const handleEditFormChange = (newForm: EditFormState, changedField?: string) => {
     if (!originalMacros) {
       setEditForm(newForm);
@@ -347,26 +382,45 @@ export function MealDetailSheet({
     const fat = parseInt(newForm.fat, 10) || 0;
     const calories = parseInt(newForm.calories, 10) || 0;
 
-    // Detect which field changed by comparing to current form
-    const caloriesChanged = changedField === 'calories' ||
-      (newForm.calories !== editForm.calories && changedField !== 'protein' && changedField !== 'carbs' && changedField !== 'fat');
-    const macrosChanged = changedField === 'protein' || changedField === 'carbs' || changedField === 'fat' ||
-      (newForm.protein !== editForm.protein || newForm.carbs !== editForm.carbs || newForm.fat !== editForm.fat);
+    // Detect which field changed
+    const caloriesChanged = changedField === 'calories';
+    const macrosChanged = changedField === 'protein' || changedField === 'carbs' || changedField === 'fat';
+    const quantityChanged = changedField === 'quantity';
 
-    if (caloriesChanged && !macrosChanged) {
-      // Calories was edited - scale macros proportionally
-      const currentMacroCalories = calculateCaloriesFromMacros(
-        parseInt(editForm.protein, 10) || 0,
-        parseInt(editForm.carbs, 10) || 0,
-        parseInt(editForm.fat, 10) || 0
+    if (quantityChanged && originalMacros.quantityNumber !== null && originalMacros.quantityNumber > 0) {
+      // Quantity was edited - scale all macros proportionally from original
+      const newQuantityNum = parseFloat(newForm.quantity) || 0;
+      if (newQuantityNum > 0) {
+        const ratio = newQuantityNum / originalMacros.quantityNumber;
+        setEditForm({
+          ...newForm,
+          calories: String(Math.round(originalMacros.calories * ratio)),
+          protein: String(Math.round(originalMacros.protein * ratio)),
+          carbs: String(Math.round(originalMacros.carbs * ratio)),
+          fat: String(Math.round(originalMacros.fat * ratio)),
+        });
+        return;
+      }
+      // If quantity is 0 or invalid, just update the form without scaling
+      setEditForm(newForm);
+      return;
+    }
+
+    if (caloriesChanged) {
+      // Calories was edited - scale macros proportionally from ORIGINAL values
+      // This ensures clearing and retyping calories doesn't lose the macro ratios
+      const originalCaloriesFromMacros = calculateCaloriesFromMacros(
+        originalMacros.protein,
+        originalMacros.carbs,
+        originalMacros.fat
       );
 
-      if (currentMacroCalories > 0 && calories > 0) {
+      if (originalCaloriesFromMacros > 0 && calories > 0) {
         const scaled = scaleMacrosToCalories(
-          parseInt(editForm.protein, 10) || 0,
-          parseInt(editForm.carbs, 10) || 0,
-          parseInt(editForm.fat, 10) || 0,
-          currentMacroCalories,
+          originalMacros.protein,
+          originalMacros.carbs,
+          originalMacros.fat,
+          originalCaloriesFromMacros,
           calories
         );
         setEditForm({
@@ -377,7 +431,12 @@ export function MealDetailSheet({
         });
         return;
       }
-    } else if (macrosChanged) {
+      // If original macros were all 0 or new calories is 0, just update without scaling
+      setEditForm(newForm);
+      return;
+    }
+
+    if (macrosChanged) {
       // A macro was edited - recalculate calories
       const newCalories = calculateCaloriesFromMacros(protein, carbs, fat);
       setEditForm({
@@ -404,12 +463,21 @@ export function MealDetailSheet({
       return;
     }
 
+    // Reconstruct quantity with unit if we have a parsed quantity
+    let finalQuantity = editForm.quantity;
+    if (originalMacros?.quantityUnit && originalMacros.quantityNumber !== null) {
+      const quantityNum = parseFloat(editForm.quantity);
+      if (!isNaN(quantityNum)) {
+        finalQuantity = formatQuantity(quantityNum, originalMacros.quantityUnit);
+      }
+    }
+
     setSaving(true);
     setEditError(null);
     try {
       await updateFoodEntry(editingItem.foodEntryID, {
         name: editForm.name,
-        quantity: editForm.quantity,
+        quantity: finalQuantity,
         calories,
         protein,
         carbs,
@@ -478,6 +546,7 @@ export function MealDetailSheet({
                 editForm={editForm}
                 saving={saving}
                 error={editingItem?.foodEntryID === item.foodEntryID ? editError : null}
+                quantityUnit={editingItem?.foodEntryID === item.foodEntryID ? (originalMacros?.quantityUnit ?? '') : ''}
                 onPress={() => handleEditPress(item)}
                 onEditFormChange={handleEditFormChange}
                 onSave={handleSaveEdit}
@@ -719,6 +788,18 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     borderBottomWidth: 1,
     borderBottomColor: '#333',
+    flex: 1,
+  },
+  quantityInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  quantityUnitSuffix: {
+    color: '#888',
+    fontSize: 15,
+    fontFamily: 'Avenir Next',
+    paddingBottom: 4,
+    marginLeft: 2,
   },
   inlineInputLabel: {
     color: '#555',
