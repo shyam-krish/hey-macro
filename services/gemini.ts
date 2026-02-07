@@ -1,4 +1,4 @@
-import { Content, GoogleGenAI, Type } from '@google/genai';
+import { Content, GoogleGenAI, Schema, Type } from '@google/genai';
 import { z } from 'zod';
 import { LLMConfig, LLMProvider, LLMMessage, ReasoningEffort } from './llmTypes';
 
@@ -11,10 +11,6 @@ const REQUEST_TIMEOUT_MS = 300000;
 // Retry configuration
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 2000; // Start with 2 seconds
-
-// if (!GEMINI_API_KEY) {
-//   console.warn('GEMINI_API_KEY not found in environment variables');
-// }
 
 const ai = new GoogleGenAI({
   apiKey: GEMINI_API_KEY || '',
@@ -32,10 +28,10 @@ function convertMessages(messages: LLMMessage[]): Content[] {
 }
 
 // Convert Zod schema to Gemini schema format
-function zodToGeminiSchema(schema: z.ZodTypeAny): any {
+function zodToGeminiSchema(schema: z.ZodTypeAny): Schema {
   if (schema instanceof z.ZodObject) {
     const shape = schema.shape;
-    const properties: Record<string, any> = {};
+    const properties: Record<string, Schema> = {};
     const required: string[] = [];
 
     for (const [key, value] of Object.entries(shape)) {
@@ -153,16 +149,8 @@ export const geminiProvider: LLMProvider = {
         const geminiSchema = zodToGeminiSchema(config.schema);
         const isGemini3 = isGemini3Model(config.model);
 
-        // Gemini 3 supports web search + structured output together!
-        // Gemini 2.x does not - web search would be disabled
-        if (config.webSearch && !isGemini3) {
-          console.warn(
-            'Gemini 2.x does not support web search with JSON schema. Upgrade to Gemini 3 for this feature.'
-          );
-        }
-
         // Build config based on model version
-        const generateConfig: any = {
+        const generateConfig: Record<string, unknown> = {
           temperature: config.temperature ?? 0.3,
           // maxOutputTokens: omit to use model default (8192 for 2.0, 65536 for 2.5+)
           ...(config.maxTokens && { maxOutputTokens: config.maxTokens }),
@@ -174,8 +162,9 @@ export const geminiProvider: LLMProvider = {
         if (isGemini3 && config.webSearch) {
           generateConfig.tools = [{ googleSearch: {} }];
           // Gemini 3 uses thinkingLevel instead of thinkingBudget
-          generateConfig.thinkingLevel = getThinkingLevel(config.reasoning?.effort);
-          console.log('[Gemini 3] Using Google Search grounding with structured output');
+          generateConfig.thinkingConfig = {
+            thinkingLevel: getThinkingLevel(config.reasoning?.effort),
+          };
         } else {
           // Gemini 2.x uses thinkingBudget
           generateConfig.thinkingConfig = {
@@ -184,23 +173,15 @@ export const geminiProvider: LLMProvider = {
           };
         }
 
-        console.log(`[Gemini] Making API request to model: ${config.model} (attempt ${attempt + 1}/${MAX_RETRIES + 1})`);
-
         const response = await ai.models.generateContent({
           model: config.model,
           contents,
           config: generateConfig,
         });
 
-        // Log response structure for debugging
-        console.log('[Gemini] Response candidates:', response.candidates?.length);
-        console.log('[Gemini] First candidate finish reason:', response.candidates?.[0]?.finishReason);
-
         // Check for blocked or incomplete responses
         const finishReason = response.candidates?.[0]?.finishReason;
         if (finishReason && finishReason !== 'STOP') {
-          console.warn(`[Gemini] Unexpected finish reason: ${finishReason}`);
-
           if (finishReason === 'MAX_TOKENS') {
             throw new Error(`MAX_TOKENS: Response truncated at ${generateConfig.maxOutputTokens} tokens. Increase maxOutputTokens.`);
           } else if (finishReason === 'SAFETY' || finishReason === 'RECITATION') {
@@ -216,27 +197,11 @@ export const geminiProvider: LLMProvider = {
           throw new Error('No response text from Gemini');
         }
 
-        console.log('[Gemini] Response text length:', text.length);
-
-        // Log grounding metadata if available (Gemini 3 with search)
-        const metadata = response.candidates?.[0]?.groundingMetadata;
-        if (metadata) {
-          console.log('[Gemini 3] Search queries used:', metadata.webSearchQueries);
-          const sources = metadata.groundingChunks?.map((chunk: any) => chunk.web?.title).filter(Boolean) || [];
-          if (sources.length > 0) {
-            console.log('[Gemini 3] Sources:', sources);
-          }
-        }
-
         // Parse JSON with better error handling
-        let parsed: any;
+        let parsed: unknown;
         try {
           parsed = JSON.parse(text);
         } catch (parseError) {
-          console.error('[Gemini] Failed to parse JSON response');
-          console.error('[Gemini] Parse error:', parseError);
-          console.error('[Gemini] Response text:', text.substring(0, 500)); // Log first 500 chars
-
           const errorMsg = parseError instanceof Error ? parseError.message : 'Unknown error';
           const preview = text.substring(0, 100) + (text.length > 100 ? '...' : '');
           throw new Error(
@@ -247,18 +212,14 @@ export const geminiProvider: LLMProvider = {
         // Validate with Zod schema
         const validated = config.schema.parse(parsed) as z.infer<T>;
 
-        // Success! Return the result
-        console.log(`[Gemini] ✅ Request succeeded on attempt ${attempt + 1}`);
         return validated;
 
       } catch (error) {
-        console.error(`[Gemini] Error on attempt ${attempt + 1}/${MAX_RETRIES + 1}:`, error);
         lastError = error instanceof Error ? error : new Error(String(error));
 
         // Check if this is a retryable error
         if (attempt < MAX_RETRIES && isRetryableError(lastError)) {
           const delayMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt); // Exponential backoff
-          console.log(`[Gemini] Retryable error detected. Waiting ${delayMs}ms before retry...`);
           await sleep(delayMs);
           continue; // Retry
         }
@@ -267,9 +228,6 @@ export const geminiProvider: LLMProvider = {
         break;
       }
     }
-
-    // All retries exhausted or non-retryable error
-    console.error('[Gemini] All retries exhausted or non-retryable error');
 
     if (lastError) {
       // Pass through the raw error message for debugging

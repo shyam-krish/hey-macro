@@ -62,8 +62,8 @@ export function ProfileScreen() {
         lastName: lastName.trim(),
       });
       setIsEditingUser(false);
-    } catch (err) {
-      console.error('Failed to save user:', err);
+    } catch {
+      // Error is handled by the updateUser hook
     } finally {
       setIsSaving(false);
     }
@@ -90,8 +90,8 @@ export function ProfileScreen() {
         ...finalValues,
       });
       setIsEditingMacros(false);
-    } catch (err) {
-      console.error('Failed to save targets:', err);
+    } catch {
+      // Error is handled by the updateTargets hook
     } finally {
       setIsSaving(false);
     }

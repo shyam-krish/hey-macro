@@ -37,13 +37,7 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       // If app is backgrounded while processing, mark it
       if (nextAppState === 'background' && isProcessing) {
-        console.log('[VoiceFoodLogger] App backgrounded during processing - request may fail');
         wasBackgroundedDuringProcessing.current = true;
-      }
-
-      // If app returns to foreground, reset the flag
-      if (nextAppState === 'active' && wasBackgroundedDuringProcessing.current) {
-        console.log('[VoiceFoodLogger] App returned to foreground after backgrounding during processing');
       }
     });
 
@@ -63,9 +57,6 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
           return;
         }
 
-        console.log(`[Voice] 🎤 Voice input received at ${new Date().toISOString()}`);
-        console.log(`[Voice] Transcript: "${finalTranscript}"`);
-
         cancelledRef.current = false;
         setIsProcessing(true);
         setLlmError(null);
@@ -83,12 +74,9 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
         }
       } catch (err) {
         if (!cancelledRef.current) {
-          console.error('Error parsing food:', err);
-
           // If app was backgrounded during processing, provide helpful context
           let errorMessage = err instanceof Error ? err.message : 'Failed to parse food input';
           if (wasBackgroundedDuringProcessing.current) {
-            console.log('[VoiceFoodLogger] Error occurred after app was backgrounded');
             errorMessage = 'Request failed because app was backgrounded. Keep the app open while processing.';
           }
 

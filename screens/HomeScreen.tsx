@@ -234,21 +234,14 @@ function StatusIndicator({
 
     // Pick a random starting message (not always "Analyzing")
     const startIndex = Math.floor(Math.random() * ANALYZING_MESSAGES.length);
-    console.log('[StatusIndicator] Setting initial message index:', startIndex, ANALYZING_MESSAGES[startIndex]);
     setMessageIndex(startIndex);
 
     // Then rotate every 5 seconds
-    console.log('[StatusIndicator] Setting up interval for message rotation (5000ms)');
     const interval = setInterval(() => {
-      setMessageIndex((prev) => {
-        const next = (prev + 1) % ANALYZING_MESSAGES.length;
-        console.log('[StatusIndicator] Interval fired - rotating from', prev, 'to', next, '-', ANALYZING_MESSAGES[next]);
-        return next;
-      });
+      setMessageIndex((prev) => (prev + 1) % ANALYZING_MESSAGES.length);
     }, 5000);
 
     return () => {
-      console.log('[StatusIndicator] Cleaning up interval');
       clearInterval(interval);
     };
   }, [isProcessing, isSaving]);
@@ -328,8 +321,6 @@ function StatusIndicator({
     statusText = ANALYZING_MESSAGES[messageIndex];
     accentColor = ACCENT_COLOR;
   }
-
-  console.log('[StatusIndicator] Rendering - messageIndex:', messageIndex, 'text:', statusText, 'isProcessing:', isProcessing, 'isSaving:', isSaving);
 
   // Show cancel button only during processing (not recording or saving)
   const showCancel = isProcessing && !isRecording && !isSaving && !error && onCancel;
@@ -978,7 +969,7 @@ export function HomeScreen() {
 
     getPreviousDaysLogs(user.userID, 7)
       .then(setPreviousDayLogs)
-      .catch((err) => console.error('Failed to fetch previous logs:', err));
+      .catch(() => {});
   }, [user]);
 
   // Monitor app state for text input processing
@@ -986,13 +977,7 @@ export function HomeScreen() {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       // If app is backgrounded while processing text input, mark it
       if (nextAppState === 'background' && isTextProcessing) {
-        console.log('[HomeScreen] App backgrounded during text processing - request may fail');
         textWasBackgroundedDuringProcessing.current = true;
-      }
-
-      // If app returns to foreground, reset the flag
-      if (nextAppState === 'active' && textWasBackgroundedDuringProcessing.current) {
-        console.log('[HomeScreen] App returned to foreground after backgrounding during text processing');
       }
     });
 
@@ -1017,9 +1002,6 @@ export function HomeScreen() {
   const handleTextSubmit = async () => {
     if (!textInput.trim() || !dailyLog) return;
 
-    console.log(`[Text] ⌨️ Text input received at ${new Date().toISOString()}`);
-    console.log(`[Text] Input: "${textInput.trim()}"`);
-
     setTextInputVisible(false);
     textCancelledRef.current = false;
     setIsTextProcessing(true);
@@ -1040,12 +1022,9 @@ export function HomeScreen() {
       }
     } catch (err) {
       if (!textCancelledRef.current) {
-        console.error('Error parsing text input:', err);
-
         // If app was backgrounded during processing, provide helpful context
         let errorMessage = err instanceof Error ? err.message : 'Failed to parse food input';
         if (textWasBackgroundedDuringProcessing.current) {
-          console.log('[HomeScreen] Error occurred after app was backgrounded during text processing');
           errorMessage = 'Request failed because app was backgrounded. Keep the app open while processing.';
         }
 
@@ -1115,8 +1094,7 @@ export function HomeScreen() {
 
         // Reset after everything completes (avoid triggering effect cancellation)
         reset();
-      } catch (err) {
-        console.error('Error saving food:', err);
+      } catch {
         setIsSavingFood(false);
       }
     })();
@@ -1166,7 +1144,6 @@ export function HomeScreen() {
         // Reset after everything completes (avoid triggering effect cancellation)
         setTextParsedFood(null);
       } catch (err) {
-        console.error('Error saving text food:', err);
         setTextError(err instanceof Error ? err.message : 'Failed to save food');
         setIsSavingFood(false);
       }

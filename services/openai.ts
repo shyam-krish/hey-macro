@@ -5,10 +5,6 @@ import { LLMConfig, LLMProvider, LLMMessage } from './llmTypes';
 
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 
-if (!OPENAI_API_KEY) {
-  console.warn('OPENAI_API_KEY not found in environment variables');
-}
-
 const client = new OpenAI({ apiKey: OPENAI_API_KEY || '' });
 
 // Convert common message format to OpenAI format
@@ -48,7 +44,6 @@ export const openaiProvider: LLMProvider = {
 
       return response.output_parsed as z.infer<T>;
     } catch (error) {
-      console.error('OpenAI API error:', error);
       throw new Error(
         `OpenAI API error: ${error instanceof Error ? error.message : 'Unknown error'}`
       );

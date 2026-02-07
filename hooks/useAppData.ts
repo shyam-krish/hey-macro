@@ -26,12 +26,6 @@ const getOffsetDateString = (dateStr: string, offsetDays: number): string => {
   return getLocalDateString(date);
 };
 
-// ==========================================
-// TOGGLE: Set to true to use database, false to use mock data
-// ==========================================
-const USE_DATABASE = true;
-// ==========================================
-
 interface AppData {
   user: User | null;
   targets: MacroTargets;
@@ -55,8 +49,7 @@ interface AppData {
 const PREFETCH_DAYS = 7;
 
 /**
- * Hook to manage app data with toggle between database and mock data
- * Includes caching and pre-fetching for smooth date transitions
+ * Hook to manage app data with caching and pre-fetching for smooth date transitions
  */
 export function useAppData(): AppData {
   const [user, setUser] = useState<User | null>(null);
@@ -72,8 +65,6 @@ export function useAppData(): AppData {
 
   // Pre-fetch surrounding days in background
   const prefetchSurroundingDays = useCallback(async (centerDate: string, userID: string) => {
-    if (!USE_DATABASE) return;
-
     const today = getLocalDateString();
     const datesToFetch: string[] = [];
 
@@ -92,9 +83,8 @@ export function useAppData(): AppData {
         try {
           const log = await getOrCreateDailyLog(userID, date);
           logCache.current.set(date, log);
-        } catch (err) {
+        } catch {
           // Silently fail for prefetch - don't block the UI
-          console.warn(`Failed to prefetch ${date}:`, err);
         }
       })
     );
@@ -109,44 +99,29 @@ export function useAppData(): AppData {
 
       const targetDate = date || selectedDate;
 
-      if (USE_DATABASE) {
-        // Load from database
-        await initDatabase();
+      await initDatabase();
 
-        let dbUser = userRef.current;
-        if (!dbUser) {
-          dbUser = await getOrCreateDefaultUser();
-          userRef.current = dbUser;
-          setUser(dbUser);
-        }
-
-        const dbTargets = await getOrCreateMacroTargets(dbUser.userID);
-        setTargets(dbTargets);
-
-        // Check cache first
-        let dbDailyLog = logCache.current.get(targetDate);
-        if (!dbDailyLog) {
-          dbDailyLog = await getOrCreateDailyLog(dbUser.userID, targetDate);
-          logCache.current.set(targetDate, dbDailyLog);
-        }
-        setDailyLog(dbDailyLog);
-
-        // Pre-fetch surrounding days in background
-        prefetchSurroundingDays(targetDate, dbUser.userID);
-      } else {
-        // Use mock data
-        setUser({
-          userID: 'default-user',
-          firstName: 'Default',
-          lastName: 'Name',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-        setTargets(mockTargets);
-        setDailyLog(mockDailyLog);
+      let dbUser = userRef.current;
+      if (!dbUser) {
+        dbUser = await getOrCreateDefaultUser();
+        userRef.current = dbUser;
+        setUser(dbUser);
       }
+
+      const dbTargets = await getOrCreateMacroTargets(dbUser.userID);
+      setTargets(dbTargets);
+
+      // Check cache first
+      let dbDailyLog = logCache.current.get(targetDate);
+      if (!dbDailyLog) {
+        dbDailyLog = await getOrCreateDailyLog(dbUser.userID, targetDate);
+        logCache.current.set(targetDate, dbDailyLog);
+      }
+      setDailyLog(dbDailyLog);
+
+      // Pre-fetch surrounding days in background
+      prefetchSurroundingDays(targetDate, dbUser.userID);
     } catch (err) {
-      console.error('Failed to load app data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
@@ -163,7 +138,7 @@ export function useAppData(): AppData {
       setDailyLog(cachedLog);
 
       // Refresh in background and update cache
-      if (USE_DATABASE && userRef.current) {
+      if (userRef.current) {
         prefetchSurroundingDays(newDate, userRef.current.userID);
       }
     } else {
@@ -191,63 +166,27 @@ export function useAppData(): AppData {
   const updateTargetsHandler = async (
     newTargets: Omit<MacroTargets, 'createdAt' | 'updatedAt'>
   ) => {
-    try {
-      if (USE_DATABASE) {
-        const updated = await updateMacroTargets(newTargets);
-        setTargets(updated);
+    const updated = await updateMacroTargets(newTargets);
+    setTargets(updated);
 
-        // Invalidate cache for today since targets affect it
-        const today = getLocalDateString();
-        invalidateCache(today);
+    // Invalidate cache for today since targets affect it
+    const today = getLocalDateString();
+    invalidateCache(today);
 
-        // Refresh daily log to get updated targets (updateMacroTargets also updates today's log)
-        if (selectedDate === today && userRef.current) {
-          const refreshedLog = await getOrCreateDailyLog(userRef.current.userID, selectedDate);
-          logCache.current.set(selectedDate, refreshedLog);
-          setDailyLog(refreshedLog);
-        }
-      } else {
-        // Mock mode: just update state
-        setTargets({
-          ...newTargets,
-          createdAt: targets.createdAt,
-          updatedAt: new Date().toISOString(),
-        });
-        // Also update dailyLog targets in mock mode
-        setDailyLog({
-          ...dailyLog,
-          targetCalories: newTargets.calories,
-          targetProtein: newTargets.protein,
-          targetCarbs: newTargets.carbs,
-          targetFat: newTargets.fat,
-        });
-      }
-    } catch (err) {
-      console.error('Failed to update targets:', err);
-      throw err;
+    // Refresh daily log to get updated targets (updateMacroTargets also updates today's log)
+    if (selectedDate === today && userRef.current) {
+      const refreshedLog = await getOrCreateDailyLog(userRef.current.userID, selectedDate);
+      logCache.current.set(selectedDate, refreshedLog);
+      setDailyLog(refreshedLog);
     }
   };
 
   const updateUserHandler = async (
     newUser: Omit<User, 'createdAt' | 'updatedAt'>
   ) => {
-    try {
-      if (USE_DATABASE) {
-        const updated = await updateUser(newUser);
-        userRef.current = updated;
-        setUser(updated);
-      } else {
-        // Mock mode: just update state
-        setUser({
-          ...newUser,
-          createdAt: user?.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-      }
-    } catch (err) {
-      console.error('Failed to update user:', err);
-      throw err;
-    }
+    const updated = await updateUser(newUser);
+    userRef.current = updated;
+    setUser(updated);
   };
 
   useEffect(() => {

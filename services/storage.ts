@@ -110,12 +110,9 @@ export async function initDatabase(): Promise<void> {
         ON food_entries(dailyLogID);
     `);
 
-    console.log('Database initialized successfully');
-
     // Run migrations
     await runMigrations();
   } catch (error) {
-    console.error('Failed to initialize database:', error);
     throw error;
   }
 }
@@ -134,17 +131,14 @@ async function runMigrations(): Promise<void> {
     const columnNames = tableInfo.map((col) => col.name);
 
     if (!columnNames.includes('targetCalories')) {
-      console.log('Running migration: Adding target columns to daily_logs');
       await db.execAsync(`
         ALTER TABLE daily_logs ADD COLUMN targetCalories INTEGER DEFAULT 2690;
         ALTER TABLE daily_logs ADD COLUMN targetProtein INTEGER DEFAULT 170;
         ALTER TABLE daily_logs ADD COLUMN targetCarbs INTEGER DEFAULT 300;
         ALTER TABLE daily_logs ADD COLUMN targetFat INTEGER DEFAULT 90;
       `);
-      console.log('Migration complete: Added target columns');
     }
   } catch (error) {
-    console.error('Migration failed:', error);
     throw error;
   }
 }
@@ -181,7 +175,6 @@ export async function getOrCreateDefaultUser(): Promise<User> {
       updatedAt: now,
     };
   } catch (error) {
-    console.error('Failed to get or create default user:', error);
     throw error;
   }
 }
@@ -213,7 +206,6 @@ export async function updateUser(
       updatedAt: now,
     };
   } catch (error) {
-    console.error('Failed to update user:', error);
     throw error;
   }
 }
@@ -253,7 +245,6 @@ export async function getOrCreateMacroTargets(userID: string): Promise<MacroTarg
 
     return defaultTargets;
   } catch (error) {
-    console.error('Failed to get or create macro targets:', error);
     throw error;
   }
 }
@@ -294,7 +285,6 @@ export async function updateMacroTargets(
       updatedAt: now,
     };
   } catch (error) {
-    console.error('Failed to update macro targets:', error);
     throw error;
   }
 }
@@ -410,7 +400,6 @@ export async function getOrCreateDailyLog(userID: string, date: string): Promise
       updatedAt: getCurrentTimestamp(),
     };
   } catch (error) {
-    console.error('Failed to get or create daily log:', error);
     throw error;
   }
 }
@@ -445,7 +434,6 @@ export async function getMonthCalorieData(
       calorieTarget: log.targetCalories,
     }));
   } catch (error) {
-    console.error('Failed to get month calorie data:', error);
     throw error;
   }
 }
@@ -464,7 +452,6 @@ export async function getEarliestLogDate(userID: string): Promise<string | null>
     );
     return result?.date || null;
   } catch (error) {
-    console.error('Failed to get earliest log date:', error);
     throw error;
   }
 }
@@ -497,7 +484,6 @@ export async function addFoodEntry(
       updatedAt: now,
     };
   } catch (error) {
-    console.error('Failed to add food entry:', error);
     throw error;
   }
 }
@@ -550,7 +536,6 @@ export async function replaceDailyFoodEntries(
       );
     });
   } catch (error) {
-    console.error('Failed to replace daily food entries:', error);
     throw error;
   }
 }
@@ -564,7 +549,6 @@ export async function deleteFoodEntry(foodEntryID: string): Promise<void> {
   try {
     await db.runAsync('DELETE FROM food_entries WHERE foodEntryID = ?', [foodEntryID]);
   } catch (error) {
-    console.error('Failed to delete food entry:', error);
     throw error;
   }
 }
@@ -628,7 +612,6 @@ export async function updateFoodEntry(
       values
     );
   } catch (error) {
-    console.error('Failed to update food entry:', error);
     throw error;
   }
 }
@@ -666,7 +649,6 @@ export async function getPreviousDaysLogs(
 
     return fullLogs;
   } catch (error) {
-    console.error('Failed to get previous days logs:', error);
     throw error;
   }
 }
@@ -685,7 +667,6 @@ export async function clearAllData(): Promise<void> {
       DELETE FROM users;
     `);
   } catch (error) {
-    console.error('Failed to clear all data:', error);
     throw error;
   }
 }

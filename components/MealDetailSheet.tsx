@@ -486,8 +486,7 @@ export function MealDetailSheet({
 
       handleCancelEdit();
       onUpdate?.();
-    } catch (error) {
-      console.error('Failed to save food entry:', error);
+    } catch {
       setEditError('Failed to save changes');
     } finally {
       setSaving(false);
@@ -507,8 +506,7 @@ export function MealDetailSheet({
       await deleteFoodEntry(editingItem.foodEntryID);
       handleCancelEdit();
       onUpdate?.();
-    } catch (error) {
-      console.error('Failed to delete food entry:', error);
+    } catch {
       setEditError('Failed to delete');
     } finally {
       setSaving(false);

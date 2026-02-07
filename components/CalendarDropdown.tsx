@@ -174,8 +174,8 @@ export function CalendarDropdown({
       try {
         const date = await getEarliestLogDate(userID);
         setEarliestDate(date);
-      } catch (error) {
-        console.error('Failed to fetch earliest log date:', error);
+      } catch {
+        // Silently fail - calendar will still work without earliest date
       }
     };
 
@@ -192,8 +192,8 @@ export function CalendarDropdown({
         const data = await getMonthCalorieData(userID, displayedYear, displayedMonth);
         const dataMap = new Map(data.map((d) => [d.date, d]));
         setCalorieData(dataMap);
-      } catch (error) {
-        console.error('Failed to fetch month calorie data:', error);
+      } catch {
+        // Silently fail - calendar will render without calorie data
       } finally {
         setLoading(false);
       }

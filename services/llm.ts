@@ -54,8 +54,6 @@ export async function parseFoodInput({
   model,
   enableWebSearch = true,
 }: ParseFoodInputParams): Promise<LLMResponse> {
-  const startTime = Date.now();
-
   try {
     const llmProvider = getProvider(provider);
     const modelToUse = model || getDefaultModel(provider);
@@ -65,10 +63,6 @@ export async function parseFoodInput({
     // Gemini 3 supports web search + structured output together
     const isGemini3 = modelToUse.includes('gemini-3');
     const useWebSearch = enableWebSearch && isGemini3;
-
-    console.log(`[LLM] ⏱️ Starting request at ${new Date().toISOString()}`);
-    console.log(`[LLM] Provider: ${provider}, Model: ${modelToUse}, webSearch: ${useWebSearch}`);
-    console.log(`[LLM] Transcript: "${transcript}"`);
 
     const result = await llmProvider.generate({
       model: modelToUse,
@@ -83,16 +77,8 @@ export async function parseFoodInput({
       // maxTokens: omit to use model default (8192 for Gemini 2.0, 65536 for Gemini 2.5)
     });
 
-    const duration = Date.now() - startTime;
-    console.log(`[LLM] ✅ Response received in ${duration}ms (${(duration / 1000).toFixed(2)}s)`);
-    console.log('[LLM] Result:', JSON.stringify(result, null, 2));
-
     return validateAndNormalizeLLMResponse(result);
   } catch (error) {
-    const duration = Date.now() - startTime;
-    console.error(`[LLM] ❌ Error after ${duration}ms:`, error);
-
-    // Pass through raw error messages for debugging (personal app)
     throw new Error(
       `Failed to parse food input: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
