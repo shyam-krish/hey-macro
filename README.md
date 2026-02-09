@@ -2,9 +2,11 @@
 
 Voice-first macro tracking app for iOS. Speak or type what you ate, and an LLM handles the nutritional analysis. Tracks calories, protein, carbs, and fat against daily targets, organized by meal.
 
-Live on TestFlight.
+Live on TestFlight. Feel free to reach out if you want to try it.
 
-![Hey Macro](screenshot.png)
+<p align="center">
+  <img src="screenshot.png" alt="Hey Macro" width="300">
+</p>
 
 ## Tech Stack
 
