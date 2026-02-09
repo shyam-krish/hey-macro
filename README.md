@@ -4,7 +4,7 @@ Voice-first macro tracking app for iOS. Speak or type what you ate, and an LLM h
 
 Live on TestFlight.
 
-![Hey Macro](hey-macro-design.png)
+![Hey Macro](screenshot.png)
 
 ## Tech Stack
 
