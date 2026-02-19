@@ -8,12 +8,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
-  Modal,
   TextInput,
   KeyboardAvoidingView,
   Platform,
   Animated,
   Easing,
+  Keyboard,
   useWindowDimensions,
   AppState,
   AppStateStatus,
@@ -366,7 +366,7 @@ function StatusIndicator({
 const statusStyles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 130,
+    bottom: 70,
     left: 20,
     right: 20,
     backgroundColor: '#1a1a1a',
@@ -456,6 +456,227 @@ const statusStyles = StyleSheet.create({
   },
 });
 
+// iMessage-style Input Bar Component
+function InputBar({
+  textInput,
+  onChangeText,
+  isRecording,
+  isProcessing,
+  isTextProcessing,
+  isSavingFood,
+  onMicPress,
+  onTextSubmit,
+}: {
+  textInput: string;
+  onChangeText: (text: string) => void;
+  isRecording: boolean;
+  isProcessing: boolean;
+  isTextProcessing: boolean;
+  isSavingFood: boolean;
+  onMicPress: () => void;
+  onTextSubmit: () => void;
+}) {
+  const isBusy = isProcessing || isTextProcessing || isSavingFood;
+  const hasText = textInput.trim().length > 0;
+
+  const dotOpacity1 = useRef(new Animated.Value(0.3)).current;
+  const dotOpacity2 = useRef(new Animated.Value(0.3)).current;
+  const dotOpacity3 = useRef(new Animated.Value(0.3)).current;
+  const isRecordingRef = useRef(false);
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  useEffect(() => {
+    if (!isRecording) {
+      dotOpacity1.setValue(0.3);
+      dotOpacity2.setValue(0.3);
+      dotOpacity3.setValue(0.3);
+      return;
+    }
+
+    const animateDots = () => {
+      dotOpacity1.setValue(0.3);
+      dotOpacity2.setValue(0.3);
+      dotOpacity3.setValue(0.3);
+      Animated.sequence([
+        Animated.timing(dotOpacity1, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(dotOpacity2, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(dotOpacity3, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.delay(200),
+      ]).start(() => {
+        if (isRecordingRef.current) animateDots();
+      });
+    };
+
+    animateDots();
+
+    return () => {
+      dotOpacity1.stopAnimation();
+      dotOpacity2.stopAnimation();
+      dotOpacity3.stopAnimation();
+    };
+  }, [isRecording]);
+
+  return (
+    <View style={inputBarStyles.container}>
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.9)']}
+        style={inputBarStyles.gradient}
+        pointerEvents="none"
+      />
+      <View style={inputBarStyles.barRow}>
+        {!isBusy && <View style={inputBarStyles.pill}>
+          {isRecording ? (
+            <View style={inputBarStyles.listeningRow}>
+              <Text style={inputBarStyles.listeningText}>Listening</Text>
+              <Animated.Text style={[inputBarStyles.listeningDot, { opacity: dotOpacity1 }]}>.</Animated.Text>
+              <Animated.Text style={[inputBarStyles.listeningDot, { opacity: dotOpacity2 }]}>.</Animated.Text>
+              <Animated.Text style={[inputBarStyles.listeningDot, { opacity: dotOpacity3 }]}>.</Animated.Text>
+            </View>
+          ) : (
+            <TextInput
+              style={inputBarStyles.textInput}
+              placeholder="Log food or ask me anything"
+              placeholderTextColor="#666"
+              value={textInput}
+              onChangeText={onChangeText}
+              editable={!isBusy}
+              multiline
+              submitBehavior="blurAndSubmit"
+              returnKeyType="send"
+              onSubmitEditing={() => {
+                if (hasText && !isBusy) onTextSubmit();
+              }}
+            />
+          )}
+          {isRecording ? (
+            <TouchableOpacity style={inputBarStyles.stopButton} onPress={onMicPress}>
+              <View style={inputBarStyles.stopIcon} />
+            </TouchableOpacity>
+          ) : hasText ? (
+            <TouchableOpacity
+              style={[inputBarStyles.sendButton, isBusy && { opacity: 0.5 }]}
+              onPress={onTextSubmit}
+              disabled={isBusy}
+            >
+              <Text style={inputBarStyles.sendArrow}>{'\u2191'}</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[inputBarStyles.micButton, isBusy && { opacity: 0.5 }]}
+              onPress={onMicPress}
+              disabled={isBusy}
+            >
+              <Image source={require('../assets/mic.png')} style={inputBarStyles.micIcon} />
+            </TouchableOpacity>
+          )}
+        </View>}
+      </View>
+    </View>
+  );
+}
+
+const inputBarStyles = StyleSheet.create({
+  container: {
+    // In normal flow at bottom of KeyboardAvoidingView
+  },
+  gradient: {
+    position: 'absolute',
+    top: -40,
+    left: 0,
+    right: 0,
+    height: 40,
+  },
+  barRow: {
+    backgroundColor: '#000',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 4 : 12,
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1c1c1e',
+    borderRadius: 24,
+    paddingLeft: 20,
+    paddingRight: 10,
+    paddingVertical: 6,
+    gap: 10,
+    minHeight: 48,
+  },
+  textInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 17,
+    fontFamily: 'Avenir Next',
+    paddingVertical: 6,
+    maxHeight: 120,
+  },
+  listeningRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  listeningText: {
+    color: '#ff4444',
+    fontSize: 17,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
+  },
+  listeningDot: {
+    color: '#ff4444',
+    fontSize: 17,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
+  },
+  micButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: ACCENT_COLOR,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  micIcon: {
+    width: 20,
+    height: 20,
+    tintColor: '#000',
+  },
+  sendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#000',
+    borderWidth: 2,
+    borderColor: ACCENT_COLOR,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendArrow: {
+    color: ACCENT_COLOR,
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginTop: -2,
+  },
+  stopButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#ff4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopIcon: {
+    width: 14,
+    height: 14,
+    backgroundColor: '#fff',
+    borderRadius: 3,
+  },
+});
+
 // Meal Card Component
 function MealCard({
   title,
@@ -529,7 +750,6 @@ export function HomeScreen() {
     setSelectedMeal(null);
   };
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [textInputVisible, setTextInputVisible] = useState(false);
   const [textInput, setTextInput] = useState('');
   const [isTextProcessing, setIsTextProcessing] = useState(false);
   const [textParsedFood, setTextParsedFood] = useState<LLMResponse | null>(null);
@@ -987,6 +1207,7 @@ export function HomeScreen() {
   }, [isTextProcessing]);
 
   const handleMicPress = async () => {
+    Keyboard.dismiss();
     if (isRecording) {
       // Stop recording and parse with today's log and previous days for context
       await stopRecordingAndParse({
@@ -994,7 +1215,8 @@ export function HomeScreen() {
         previousDayLogs: previousDayLogs.length > 0 ? previousDayLogs : undefined,
       });
     } else {
-      // Start recording
+      // Clear any typed text and start recording
+      setTextInput('');
       await startRecording();
     }
   };
@@ -1002,7 +1224,7 @@ export function HomeScreen() {
   const handleTextSubmit = async () => {
     if (!textInput.trim() || !dailyLog) return;
 
-    setTextInputVisible(false);
+    Keyboard.dismiss();
     textCancelledRef.current = false;
     setIsTextProcessing(true);
     setTextError(null);
@@ -1178,7 +1400,11 @@ export function HomeScreen() {
           <Text style={styles.errorText}>Error: {error}</Text>
         </View>
       ) : (
-        <>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
+        >
         <Animated.View style={[styles.mainContent, { transform: [{ translateX: slideAnim }] }]}>
           {/* Macro Summary Section */}
           <View style={styles.summarySection}>
@@ -1290,8 +1516,8 @@ export function HomeScreen() {
                           />
                         </Animated.View>
                       )}
-                      {/* Bottom padding for floating buttons */}
-                      <View style={{ height: 100 }} />
+                      {/* Bottom padding */}
+                      <View style={{ height: 20 }} />
                     </>
                   ) : (
                     <Animated.View
@@ -1302,7 +1528,7 @@ export function HomeScreen() {
                     >
                       <Text style={styles.emptyStateText}>No food logged yet</Text>
                       <Text style={styles.emptyStateSubtext}>
-                        Tap the mic button to get started
+                        Use the input below to get started
                       </Text>
                     </Animated.View>
                   )}
@@ -1310,7 +1536,7 @@ export function HomeScreen() {
               );
 
               return hasFood ? (
-                <ScrollView style={styles.foodSection} contentContainerStyle={styles.foodSectionContent}>
+                <ScrollView style={styles.foodSection} contentContainerStyle={styles.foodSectionContent} keyboardDismissMode="on-drag">
                   {content}
                 </ScrollView>
               ) : (
@@ -1320,65 +1546,9 @@ export function HomeScreen() {
 
           </View>
         </Animated.View>
-        <>
-          {/* Calendar Dropdown */}
-          <CalendarDropdown
-            visible={calendarVisible}
-            onClose={() => setCalendarVisible(false)}
-            selectedDate={selectedDate}
-            onDateSelect={(date) => {
-              changeDate(date);
-              setCalendarVisible(false);
-            }}
-            userID={user?.userID || 'default-user'}
-            calorieTarget={targets?.calories || 2700}
-          />
-
-          {/* Floating Action Buttons */}
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.8)']}
-            style={styles.fabContainer}
-            pointerEvents="box-none"
-          >
-            {/* Text Input Button (Secondary) */}
-            <TouchableOpacity
-              style={[
-                styles.fab,
-                styles.fabSecondary,
-                isTextProcessing && styles.fabProcessing,
-              ]}
-              onPress={() => setTextInputVisible(true)}
-              disabled={isProcessing || isRecording || isTextProcessing}
-            >
-              {isTextProcessing ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.fabText}>Aa</Text>
-              )}
-            </TouchableOpacity>
-
-            {/* Mic Button (Primary) */}
-            <TouchableOpacity
-              style={[
-                styles.fab,
-                isRecording && styles.fabRecording,
-                isProcessing && styles.fabProcessing,
-              ]}
-              onPress={handleMicPress}
-              disabled={isProcessing || isTextProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : isRecording ? (
-                <View style={[styles.stopIcon, { backgroundColor: '#fff' }]} />
-              ) : (
-                <Image source={require('../assets/mic.png')} style={styles.micIcon} />
-              )}
-            </TouchableOpacity>
-          </LinearGradient>
 
           {/* Status Indicator (renders on top) */}
-          {(isRecording || isProcessing || isTextProcessing || isSavingFood || voiceError || textError) && (
+          {(isProcessing || isTextProcessing || isSavingFood || voiceError || textError) && (
             <StatusIndicator
               isRecording={isRecording}
               isProcessing={isProcessing || isTextProcessing}
@@ -1390,62 +1560,32 @@ export function HomeScreen() {
             />
           )}
 
-          {/* Text Input Bottom Sheet */}
-          <Modal
-            visible={textInputVisible}
-            transparent
-            animationType="slide"
-            onRequestClose={() => setTextInputVisible(false)}
-          >
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.modalOverlay}
-            >
-              <TouchableOpacity
-                style={styles.modalBackdrop}
-                activeOpacity={1}
-                onPress={() => setTextInputVisible(false)}
-              />
-              <View style={styles.bottomSheet}>
-                <View style={styles.bottomSheetHandle} />
-                <TextInput
-                  style={styles.textInputField}
-                  placeholder="What did you eat?"
-                  placeholderTextColor="#666"
-                  value={textInput}
-                  onChangeText={setTextInput}
-                  multiline
-                  autoFocus
-                  returnKeyType="done"
-                  blurOnSubmit
-                />
-                <View style={styles.bottomSheetButtons}>
-                  <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={() => {
-                      setTextInput('');
-                      setTextInputVisible(false);
-                    }}
-                  >
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.submitButton,
-                      !textInput.trim() && styles.submitButtonDisabled,
-                    ]}
-                    onPress={handleTextSubmit}
-                    disabled={!textInput.trim()}
-                  >
-                    <Text style={styles.submitButtonText}>Log Food</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </KeyboardAvoidingView>
-          </Modal>
-        </>
-        </>
+          {/* iMessage-style Input Bar */}
+          <InputBar
+            textInput={textInput}
+            onChangeText={setTextInput}
+            isRecording={isRecording}
+            isProcessing={isProcessing}
+            isTextProcessing={isTextProcessing}
+            isSavingFood={isSavingFood}
+            onMicPress={handleMicPress}
+            onTextSubmit={handleTextSubmit}
+          />
+        </KeyboardAvoidingView>
       )}
+
+      {/* Calendar Dropdown */}
+      <CalendarDropdown
+        visible={calendarVisible}
+        onClose={() => setCalendarVisible(false)}
+        selectedDate={selectedDate}
+        onDateSelect={(date) => {
+          changeDate(date);
+          setCalendarVisible(false);
+        }}
+        userID={user?.userID || 'default-user'}
+        calorieTarget={targets?.calories || 2700}
+      />
 
       {/* Modals rendered outside loading conditional to prevent unmount during refresh */}
       <MealDetailSheet
@@ -1620,70 +1760,6 @@ const styles = StyleSheet.create({
     color: '#a3a3a3',
   },
 
-  // Floating Action Buttons
-  fabContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 280,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingBottom: 50,
-    paddingHorizontal: 40,
-  },
-  fab: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: ACCENT_COLOR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Subtle glow for primary button
-    shadowColor: ACCENT_COLOR,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  fabSecondary: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1.5,
-    borderColor: '#444',
-    // No shadow for secondary
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  fabText: {
-    color: '#888',
-    fontSize: 18,
-    fontFamily: 'Avenir Next',
-    fontWeight: '600',
-  },
-  micIcon: {
-    width: 28,
-    height: 28,
-    tintColor: '#000',
-  },
-  stopIcon: {
-    width: 18,
-    height: 18,
-    backgroundColor: '#000',
-    borderRadius: 4,
-  },
-  fabRecording: {
-    backgroundColor: '#ff4444',
-    shadowColor: '#ff4444',
-  },
-  fabProcessing: {
-    backgroundColor: ACCENT_COLOR,
-    shadowColor: ACCENT_COLOR,
-  },
-
   // Empty State
   emptyStateContainer: {
     alignItems: 'center',
@@ -1701,74 +1777,5 @@ const styles = StyleSheet.create({
     color: '#444',
     fontSize: 14,
     fontFamily: 'Avenir Next',
-  },
-
-  // Text Input Bottom Sheet
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  bottomSheet: {
-    backgroundColor: '#1a1a1a',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 40,
-  },
-  bottomSheetHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#444',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  textInputField: {
-    backgroundColor: '#252525',
-    borderRadius: 12,
-    padding: 16,
-    color: '#fff',
-    fontSize: 16,
-    fontFamily: 'Avenir Next',
-    minHeight: 100,
-    textAlignVertical: 'top',
-    marginBottom: 20,
-  },
-  bottomSheetButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#252525',
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: '#888',
-    fontSize: 16,
-    fontFamily: 'Avenir Next',
-    fontWeight: '600',
-  },
-  submitButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#444',
-  },
-  submitButtonText: {
-    color: '#000',
-    fontSize: 16,
-    fontFamily: 'Avenir Next',
-    fontWeight: '600',
   },
 });
