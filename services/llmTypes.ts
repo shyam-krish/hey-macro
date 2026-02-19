@@ -49,3 +49,10 @@ export type LLMResponseParsed = z.infer<typeof LLMResponseSchema>;
 export interface LLMProvider {
   generate<T extends z.ZodType>(config: LLMConfig<T>): Promise<z.infer<T>>;
 }
+
+// Schema for recommendation/advice responses
+export const RecommendationResponseSchema = z.object({
+  isValid: z.boolean().describe('True if the question is related to food, nutrition, or macros. False otherwise.'),
+  answer: z.string().describe('Direct, actionable answer to the nutrition question. Empty string if isValid is false.'),
+});
+export type RecommendationResponse = z.infer<typeof RecommendationResponseSchema>;

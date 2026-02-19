@@ -1,8 +1,8 @@
-import { LLMResponse, FoodItem, DailyLog } from '../types';
-import { foodParsingPrompt } from '../constants';
+import { LLMResponse, FoodItem, DailyLog, MacroTargets } from '../types';
+import { foodParsingPrompt, recommendationPrompt } from '../constants';
 import { openaiProvider, OPENAI_DEFAULT_MODEL } from './openai';
 import { geminiProvider, GEMINI_DEFAULT_MODEL, GEMINI3_DEFAULT_MODEL } from './gemini';
-import { LLMMessage, LLMResponseSchema, LLMProvider, FoodItemParsed, LLMResponseParsed } from './llmTypes';
+import { LLMMessage, LLMResponseSchema, LLMProvider, FoodItemParsed, LLMResponseParsed, RecommendationResponseSchema } from './llmTypes';
 
 // Provider selection - gemini3 is the recommended default (supports web search + structured output)
 type ProviderType = 'openai' | 'gemini' | 'gemini3';
@@ -162,6 +162,72 @@ function validateAndNormalizeLLMResponse(response: LLMResponseParsed): LLMRespon
   }
 
   return normalized;
+}
+
+interface GetRecommendationParams {
+  question: string;
+  currentTime?: Date;
+  todayLog: DailyLog;
+  macroTargets: MacroTargets;
+  provider?: ProviderType;
+  enableWebSearch?: boolean;
+}
+
+export async function getRecommendation({
+  question,
+  currentTime = new Date(),
+  todayLog,
+  macroTargets,
+  provider = DEFAULT_PROVIDER,
+  enableWebSearch = true,
+}: GetRecommendationParams): Promise<{ isValid: boolean; answer: string }> {
+  try {
+    const llmProvider = getProvider(provider);
+    const modelToUse = getDefaultModel(provider);
+    const isGemini3 = modelToUse.includes('gemini-3');
+    const useWebSearch = enableWebSearch && isGemini3;
+
+    const remaining = {
+      calories: macroTargets.calories - todayLog.totalCalories,
+      protein: macroTargets.protein - todayLog.totalProtein,
+      carbs: macroTargets.carbs - todayLog.totalCarbs,
+      fat: macroTargets.fat - todayLog.totalFat,
+    };
+
+    const mealsContext = formatMealsFromLog(todayLog);
+
+    const userPrompt = `Current Date/Time: ${currentTime.toISOString()}
+
+Macro Targets: Calories: ${macroTargets.calories}, Protein: ${macroTargets.protein}g, Carbs: ${macroTargets.carbs}g, Fat: ${macroTargets.fat}g
+
+Consumed Today: Calories: ${todayLog.totalCalories}, Protein: ${todayLog.totalProtein}g, Carbs: ${todayLog.totalCarbs}g, Fat: ${todayLog.totalFat}g
+
+Remaining: Calories: ${remaining.calories}, Protein: ${remaining.protein}g, Carbs: ${remaining.carbs}g, Fat: ${remaining.fat}g
+
+Today's meals:
+${mealsContext.length > 0 ? mealsContext.join('\n') : 'Nothing logged yet'}
+
+Question: ${question}`;
+
+    const result = await llmProvider.generate({
+      model: modelToUse,
+      messages: [
+        { role: 'system', content: recommendationPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      schema: RecommendationResponseSchema,
+      schemaName: 'recommendation_response',
+      webSearch: useWebSearch,
+      reasoning: { effort: 'low' },
+      temperature: 0.5,
+    });
+
+    return { isValid: result.isValid, answer: result.answer };
+  } catch (error) {
+    throw new Error(
+      `Failed to get recommendation: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
 }
 
 // Validate and normalize food item for storage

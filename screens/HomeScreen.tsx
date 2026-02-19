@@ -27,7 +27,7 @@ import { useNavigation } from '@react-navigation/native';
 import { FoodEntry, DailyLog } from '../types';
 import { useAppDataContext } from '../contexts/AppDataContext';
 import { useVoiceFoodLogger } from '../hooks/useVoiceFoodLogger';
-import { parseFoodInput } from '../services/llm';
+import { parseFoodInput, getRecommendation } from '../services/llm';
 import { replaceDailyFoodEntries, getPreviousDaysLogs } from '../services/storage';
 import { LLMResponse } from '../types';
 import { MealDetailSheet } from '../components/MealDetailSheet';
@@ -196,11 +196,20 @@ const ANALYZING_MESSAGES = [
   'Estimating portions',
 ];
 
+const RECOMMENDATION_MESSAGES = [
+  'Thinking',
+  'Checking your macros',
+  'Looking up nutrition',
+  'Crunching the numbers',
+  'Almost there',
+];
+
 // Animated Status Indicator Component
 function StatusIndicator({
   isRecording,
   isProcessing,
   isSaving,
+  isRecommendationMode,
   error,
   inputText,
   onCancel,
@@ -209,6 +218,7 @@ function StatusIndicator({
   isRecording: boolean;
   isProcessing: boolean;
   isSaving: boolean;
+  isRecommendationMode: boolean;
   error: string | null;
   inputText?: string;
   onCancel?: () => void;
@@ -232,19 +242,21 @@ function StatusIndicator({
       return;
     }
 
-    // Pick a random starting message (not always "Analyzing")
-    const startIndex = Math.floor(Math.random() * ANALYZING_MESSAGES.length);
+    const messages = isRecommendationMode ? RECOMMENDATION_MESSAGES : ANALYZING_MESSAGES;
+
+    // Pick a random starting message (not always the first)
+    const startIndex = Math.floor(Math.random() * messages.length);
     setMessageIndex(startIndex);
 
     // Then rotate every 5 seconds
     const interval = setInterval(() => {
-      setMessageIndex((prev) => (prev + 1) % ANALYZING_MESSAGES.length);
+      setMessageIndex((prev) => (prev + 1) % messages.length);
     }, 5000);
 
     return () => {
       clearInterval(interval);
     };
-  }, [isProcessing, isSaving]);
+  }, [isProcessing, isSaving, isRecommendationMode]);
 
   // Animate dots in sequence
   useEffect(() => {
@@ -318,7 +330,7 @@ function StatusIndicator({
     statusText = 'Updating your macros';
     accentColor = ACCENT_COLOR;
   } else {
-    statusText = ANALYZING_MESSAGES[messageIndex];
+    statusText = (isRecommendationMode ? RECOMMENDATION_MESSAGES : ANALYZING_MESSAGES)[messageIndex];
     accentColor = ACCENT_COLOR;
   }
 
@@ -366,7 +378,7 @@ function StatusIndicator({
 const statusStyles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 70,
+    bottom: 30,
     left: 20,
     right: 20,
     backgroundColor: '#1a1a1a',
@@ -456,6 +468,66 @@ const statusStyles = StyleSheet.create({
   },
 });
 
+// Recommendation Answer Card
+function RecommendationCard({ answer, onDismiss }: { answer: string; onDismiss: () => void }) {
+  return (
+    <View style={recommendationCardStyles.container}>
+      <Text style={recommendationCardStyles.answer}>{answer}</Text>
+      <TouchableOpacity
+        style={recommendationCardStyles.dismissButton}
+        onPress={onDismiss}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Text style={recommendationCardStyles.dismissText}>✕</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const recommendationCardStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    bottom: 70,
+    left: 20,
+    right: 20,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    paddingRight: 44,
+    borderWidth: 1.5,
+    borderColor: ACCENT_COLOR,
+    shadowColor: ACCENT_COLOR,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  answer: {
+    color: '#fff',
+    fontSize: 15,
+    fontFamily: 'Avenir Next',
+    lineHeight: 22,
+  },
+  dismissButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dismissText: {
+    color: '#aaa',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 14,
+  },
+});
+
 // iMessage-style Input Bar Component
 function InputBar({
   textInput,
@@ -464,6 +536,9 @@ function InputBar({
   isProcessing,
   isTextProcessing,
   isSavingFood,
+  isRecommendationProcessing,
+  isRecommendationMode,
+  onToggleRecommendationMode,
   onMicPress,
   onTextSubmit,
 }: {
@@ -473,10 +548,13 @@ function InputBar({
   isProcessing: boolean;
   isTextProcessing: boolean;
   isSavingFood: boolean;
+  isRecommendationProcessing: boolean;
+  isRecommendationMode: boolean;
+  onToggleRecommendationMode: () => void;
   onMicPress: () => void;
   onTextSubmit: () => void;
 }) {
-  const isBusy = isProcessing || isTextProcessing || isSavingFood;
+  const isBusy = isProcessing || isTextProcessing || isSavingFood || isRecommendationProcessing;
   const hasText = textInput.trim().length > 0;
 
   const dotOpacity1 = useRef(new Animated.Value(0.3)).current;
@@ -527,7 +605,15 @@ function InputBar({
         pointerEvents="none"
       />
       <View style={inputBarStyles.barRow}>
-        {!isBusy && <View style={inputBarStyles.pill}>
+        {!isBusy && <>
+          <TouchableOpacity
+            style={[inputBarStyles.modeToggle, isRecommendationMode && inputBarStyles.modeToggleActive]}
+            onPress={onToggleRecommendationMode}
+            disabled={isBusy}
+          >
+            <Text style={[inputBarStyles.modeToggleText, isRecommendationMode && inputBarStyles.modeToggleTextActive]}>?</Text>
+          </TouchableOpacity>
+          <View style={[inputBarStyles.pill, isRecommendationMode && inputBarStyles.pillRecommendation]}>
           {isRecording ? (
             <View style={inputBarStyles.listeningRow}>
               <Text style={inputBarStyles.listeningText}>Listening</Text>
@@ -538,7 +624,7 @@ function InputBar({
           ) : (
             <TextInput
               style={inputBarStyles.textInput}
-              placeholder="Log food or ask me anything"
+              placeholder={isRecommendationMode ? 'Ask me anything' : 'Log food'}
               placeholderTextColor="#666"
               value={textInput}
               onChangeText={onChangeText}
@@ -572,7 +658,8 @@ function InputBar({
               <Image source={require('../assets/mic.png')} style={inputBarStyles.micIcon} />
             </TouchableOpacity>
           )}
-        </View>}
+          </View>
+        </>}
       </View>
     </View>
   );
@@ -590,12 +677,16 @@ const inputBarStyles = StyleSheet.create({
     height: 40,
   },
   barRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     backgroundColor: '#000',
     paddingHorizontal: 12,
     paddingTop: 8,
     paddingBottom: Platform.OS === 'ios' ? 4 : 12,
   },
   pill: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1c1c1e',
@@ -649,7 +740,7 @@ const inputBarStyles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#000',
+    backgroundColor: '#1c1c1e',
     borderWidth: 2,
     borderColor: ACCENT_COLOR,
     alignItems: 'center',
@@ -674,6 +765,34 @@ const inputBarStyles = StyleSheet.create({
     height: 14,
     backgroundColor: '#fff',
     borderRadius: 3,
+  },
+  pillRecommendation: {
+    shadowColor: ACCENT_COLOR,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.7,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  modeToggle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#1c1c1e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  modeToggleActive: {
+    backgroundColor: '#1c1c1e',
+  },
+  modeToggleText: {
+    color: '#666',
+    fontSize: 20,
+    fontWeight: '600',
+    fontFamily: 'Avenir Next',
+  },
+  modeToggleTextActive: {
+    color: '#fff',
   },
 });
 
@@ -758,6 +877,11 @@ export function HomeScreen() {
   const [isSavingFood, setIsSavingFood] = useState(false);
   const textCancelledRef = useRef(false);
   const textWasBackgroundedDuringProcessing = useRef(false);
+  const recommendationCancelledRef = useRef(false);
+  const [isRecommendationMode, setIsRecommendationMode] = useState(false);
+  const [recommendationAnswer, setRecommendationAnswer] = useState<string | null>(null);
+  const [isRecommendationProcessing, setIsRecommendationProcessing] = useState(false);
+  const [recommendationError, setRecommendationError] = useState<string | null>(null);
   const {
     isRecording,
     isProcessing,
@@ -1209,11 +1333,18 @@ export function HomeScreen() {
   const handleMicPress = async () => {
     Keyboard.dismiss();
     if (isRecording) {
-      // Stop recording and parse with today's log and previous days for context
-      await stopRecordingAndParse({
-        todayLog: dailyLog ?? undefined,
-        previousDayLogs: previousDayLogs.length > 0 ? previousDayLogs : undefined,
-      });
+      if (isRecommendationMode) {
+        // In recommendation mode, pass transcript to recommendation handler
+        await stopRecordingAndParse({
+          onTranscript: (t) => handleRecommendationSubmit(t),
+        });
+      } else {
+        // Stop recording and parse with today's log and previous days for context
+        await stopRecordingAndParse({
+          todayLog: dailyLog ?? undefined,
+          previousDayLogs: previousDayLogs.length > 0 ? previousDayLogs : undefined,
+        });
+      }
     } else {
       // Clear any typed text and start recording
       setTextInput('');
@@ -1222,7 +1353,14 @@ export function HomeScreen() {
   };
 
   const handleTextSubmit = async () => {
-    if (!textInput.trim() || !dailyLog) return;
+    if (!textInput.trim()) return;
+
+    if (isRecommendationMode) {
+      await handleRecommendationSubmit(textInput);
+      return;
+    }
+
+    if (!dailyLog) return;
 
     Keyboard.dismiss();
     textCancelledRef.current = false;
@@ -1272,11 +1410,46 @@ export function HomeScreen() {
       setIsTextProcessing(false);
       setTextError(null);
     }
+    if (isRecommendationProcessing) {
+      recommendationCancelledRef.current = true;
+      setIsRecommendationProcessing(false);
+      setRecommendationError(null);
+    }
   };
 
   const handleDismissError = () => {
     reset(); // Clears voice errors
     setTextError(null); // Clears text errors
+    setRecommendationError(null);
+  };
+
+  const handleRecommendationSubmit = async (text: string) => {
+    if (!text.trim() || !dailyLog || !targets) return;
+    Keyboard.dismiss();
+    recommendationCancelledRef.current = false;
+    setIsRecommendationProcessing(true);
+    setRecommendationAnswer(null);
+    setRecommendationError(null);
+    try {
+      const { isValid, answer } = await getRecommendation({
+        question: text.trim(),
+        currentTime: new Date(),
+        todayLog: dailyLog,
+        macroTargets: targets,
+      });
+      if (!recommendationCancelledRef.current) {
+        setRecommendationAnswer(isValid ? answer : 'Sorry I didn\'t get that. Try again.');
+        setTextInput('');
+      }
+    } catch (err) {
+      if (!recommendationCancelledRef.current) {
+        setRecommendationError(err instanceof Error ? err.message : 'Failed to get recommendation');
+      }
+    } finally {
+      if (!recommendationCancelledRef.current) {
+        setIsRecommendationProcessing(false);
+      }
+    }
   };
 
   // Save parsed food from voice to database when available
@@ -1548,15 +1721,24 @@ export function HomeScreen() {
         </Animated.View>
 
           {/* Status Indicator (renders on top) */}
-          {(isProcessing || isTextProcessing || isSavingFood || voiceError || textError) && (
+          {(isProcessing || isTextProcessing || isSavingFood || isRecommendationProcessing || voiceError || textError || recommendationError) && (
             <StatusIndicator
               isRecording={isRecording}
-              isProcessing={isProcessing || isTextProcessing}
+              isProcessing={isProcessing || isTextProcessing || isRecommendationProcessing}
               isSaving={isSavingFood}
-              error={voiceError || textError}
-              inputText={isProcessing ? transcript : isTextProcessing ? textInput : undefined}
+              isRecommendationMode={isRecommendationMode}
+              error={voiceError || textError || recommendationError}
+              inputText={isProcessing ? transcript : (isTextProcessing || isRecommendationProcessing) ? textInput : undefined}
               onCancel={handleCancelAnalysis}
               onDismissError={handleDismissError}
+            />
+          )}
+
+          {/* Recommendation Answer Card */}
+          {recommendationAnswer && (
+            <RecommendationCard
+              answer={recommendationAnswer}
+              onDismiss={() => setRecommendationAnswer(null)}
             />
           )}
 
@@ -1568,6 +1750,13 @@ export function HomeScreen() {
             isProcessing={isProcessing}
             isTextProcessing={isTextProcessing}
             isSavingFood={isSavingFood}
+            isRecommendationProcessing={isRecommendationProcessing}
+            isRecommendationMode={isRecommendationMode}
+            onToggleRecommendationMode={() => {
+              setIsRecommendationMode((m) => !m);
+              setTextInput('');
+              setRecommendationAnswer(null);
+            }}
             onMicPress={handleMicPress}
             onTextSubmit={handleTextSubmit}
           />

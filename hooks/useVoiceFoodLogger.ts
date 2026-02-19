@@ -8,6 +8,7 @@ import { LLMResponse, DailyLog } from '../types';
 export interface StopRecordingOptions {
   todayLog?: DailyLog;
   previousDayLogs?: DailyLog[];
+  onTranscript?: (transcript: string) => void; // if provided, skip food parsing (recommendation mode)
 }
 
 export interface UseVoiceFoodLoggerResult {
@@ -54,6 +55,12 @@ export function useVoiceFoodLogger(): UseVoiceFoodLoggerResult {
 
         // If no transcript, just silently return - the voice error handler will deal with it
         if (!finalTranscript) {
+          return;
+        }
+
+        // In recommendation mode, caller handles the transcript directly
+        if (options?.onTranscript) {
+          options.onTranscript(finalTranscript);
           return;
         }
 
