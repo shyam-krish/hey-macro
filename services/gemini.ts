@@ -145,7 +145,13 @@ export const geminiProvider: LLMProvider = {
     // Retry loop with exponential backoff
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const contents = convertMessages(config.messages);
+        // Separate system messages (→ systemInstruction) from conversation messages
+        const systemMessages = config.messages.filter((m) => m.role === 'system');
+        const conversationMessages = config.messages.filter((m) => m.role !== 'system');
+        const systemInstruction = systemMessages.length > 0
+          ? systemMessages.map((m) => m.content).join('\n\n')
+          : undefined;
+        const contents = convertMessages(conversationMessages);
         const geminiSchema = zodToGeminiSchema(config.schema);
         const isGemini3 = isGemini3Model(config.model);
 
@@ -156,6 +162,7 @@ export const geminiProvider: LLMProvider = {
           ...(config.maxTokens && { maxOutputTokens: config.maxTokens }),
           responseMimeType: 'application/json',
           responseSchema: geminiSchema,
+          ...(systemInstruction && { systemInstruction }),
         };
 
         // Add tools for Gemini 3 with web search

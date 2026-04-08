@@ -266,14 +266,14 @@ Same flow as voice from here
 The app uses a **model-agnostic architecture** with support for multiple LLM providers:
 
 **Providers:**
-- **OpenAI** (default) - `gpt-5.2` via Responses API
-  - ✅ Web search tool
+- **OpenAI** (default) - `gpt-5.4-mini-2026-03-17` via Responses API
+  - ✅ Web search tool (`web_search_preview`)
   - ✅ Structured JSON schema with Zod
   - ✅ Reasoning capability
-- **Gemini** - `gemini-2.5-flash` via generateContent
-  - ❌ No web search with JSON schema (API limitation)
+- **Gemini** - `gemini-2.5-flash` / `gemini-3-flash-preview` via generateContent
   - ✅ Structured JSON schema
   - ✅ Thinking/reasoning capability
+  - ⚠️ Web search + structured output can be unreliable on preview models
 
 **Schema Validation:**
 Uses Zod schemas for type-safe parsing:

@@ -18,9 +18,9 @@ function convertMessages(messages: LLMMessage[]): Array<{ role: 'system' | 'user
 export const openaiProvider: LLMProvider = {
   async generate<T extends z.ZodType>(config: LLMConfig<T>): Promise<z.infer<T>> {
     try {
-      const tools: Array<{ type: 'web_search' }> = [];
+      const tools: Array<{ type: 'web_search_preview' }> = [];
       if (config.webSearch) {
-        tools.push({ type: 'web_search' });
+        tools.push({ type: 'web_search_preview' });
       }
 
       const response = await client.responses.parse({
@@ -52,4 +52,4 @@ export const openaiProvider: LLMProvider = {
 };
 
 // Default model for OpenAI
-export const OPENAI_DEFAULT_MODEL = 'gpt-5.2';
+export const OPENAI_DEFAULT_MODEL = 'gpt-5.4-mini-2026-03-17';

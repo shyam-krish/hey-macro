@@ -25,6 +25,7 @@ import Svg, { Circle } from 'react-native-svg';
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useNavigation } from '@react-navigation/native';
 import { FoodEntry, DailyLog } from '../types';
+import { LLMMessage } from '../services/llmTypes';
 import { useAppDataContext } from '../contexts/AppDataContext';
 import { useVoiceFoodLogger } from '../hooks/useVoiceFoodLogger';
 import { parseFoodInput, getRecommendation } from '../services/llm';
@@ -468,11 +469,92 @@ const statusStyles = StyleSheet.create({
   },
 });
 
+// Toast notification
+function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(-20)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 250, useNativeDriver: true }),
+    ]).start();
+
+    const timer = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+        Animated.timing(translateY, { toValue: -20, duration: 300, useNativeDriver: true }),
+      ]).start(() => onDismiss());
+    }, 4000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <Animated.View style={[toastStyles.container, { opacity, transform: [{ translateY }] }]}>
+      <Text style={toastStyles.text} numberOfLines={3}>{message}</Text>
+      <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <Text style={toastStyles.dismiss}>✕</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+const toastStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    right: 20,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ff6b6b',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#ff6b6b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 100,
+  },
+  text: {
+    flex: 1,
+    color: '#ff6b6b',
+    fontSize: 14,
+    fontFamily: 'Avenir Next',
+    lineHeight: 20,
+  },
+  dismiss: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 12,
+  },
+});
+
 // Recommendation Answer Card
-function RecommendationCard({ answer, onDismiss }: { answer: string; onDismiss: () => void }) {
+function RecommendationCard({
+  history,
+  isProcessing,
+  onDismiss,
+}: {
+  history: LLMMessage[];
+  isProcessing: boolean;
+  onDismiss: () => void;
+}) {
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    // Scroll to bottom when new messages arrive
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  }, [history.length]);
+
   return (
     <View style={recommendationCardStyles.container}>
-      <Text style={recommendationCardStyles.answer}>{answer}</Text>
       <TouchableOpacity
         style={recommendationCardStyles.dismissButton}
         onPress={onDismiss}
@@ -480,6 +562,37 @@ function RecommendationCard({ answer, onDismiss }: { answer: string; onDismiss: 
       >
         <Text style={recommendationCardStyles.dismissText}>✕</Text>
       </TouchableOpacity>
+      <ScrollView
+        ref={scrollRef}
+        style={recommendationCardStyles.scrollArea}
+        showsVerticalScrollIndicator={false}
+      >
+        {history.map((msg, i) => (
+          <View
+            key={i}
+            style={
+              msg.role === 'user'
+                ? recommendationCardStyles.userBubble
+                : recommendationCardStyles.assistantBubble
+            }
+          >
+            <Text
+              style={
+                msg.role === 'user'
+                  ? recommendationCardStyles.userText
+                  : recommendationCardStyles.assistantText
+              }
+            >
+              {msg.content}
+            </Text>
+          </View>
+        ))}
+        {isProcessing && (
+          <View style={recommendationCardStyles.assistantBubble}>
+            <ActivityIndicator size="small" color={ACCENT_COLOR} />
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -490,11 +603,12 @@ const recommendationCardStyles = StyleSheet.create({
     bottom: 70,
     left: 20,
     right: 20,
+    maxHeight: 300,
     backgroundColor: '#1a1a1a',
     borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    paddingRight: 44,
+    paddingTop: 40,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
     borderWidth: 1.5,
     borderColor: ACCENT_COLOR,
     shadowColor: ACCENT_COLOR,
@@ -503,22 +617,53 @@ const recommendationCardStyles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-  answer: {
-    color: '#fff',
-    fontSize: 15,
+  scrollArea: {
+    flexGrow: 0,
+  },
+  userBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: ACCENT_COLOR,
+    borderRadius: 12,
+    borderBottomRightRadius: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    maxWidth: '85%',
+  },
+  assistantBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    borderBottomLeftRadius: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    maxWidth: '85%',
+  },
+  userText: {
+    color: '#000',
+    fontSize: 14,
     fontFamily: 'Avenir Next',
-    lineHeight: 22,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  assistantText: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Avenir Next',
+    lineHeight: 20,
   },
   dismissButton: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: 8,
+    right: 8,
     width: 28,
     height: 28,
     borderRadius: 14,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
   },
   dismissText: {
     color: '#aaa',
@@ -538,6 +683,7 @@ function InputBar({
   isSavingFood,
   isRecommendationProcessing,
   isRecommendationMode,
+  hasRecommendationHistory,
   onToggleRecommendationMode,
   onMicPress,
   onTextSubmit,
@@ -550,6 +696,7 @@ function InputBar({
   isSavingFood: boolean;
   isRecommendationProcessing: boolean;
   isRecommendationMode: boolean;
+  hasRecommendationHistory: boolean;
   onToggleRecommendationMode: () => void;
   onMicPress: () => void;
   onTextSubmit: () => void;
@@ -624,7 +771,7 @@ function InputBar({
           ) : (
             <TextInput
               style={inputBarStyles.textInput}
-              placeholder={isRecommendationMode ? 'Ask me anything' : 'Log food'}
+              placeholder={isRecommendationMode ? (hasRecommendationHistory ? 'Ask a follow-up..' : 'Ask me anything..') : 'Log food'}
               placeholderTextColor="#666"
               value={textInput}
               onChangeText={onChangeText}
@@ -879,7 +1026,7 @@ export function HomeScreen() {
   const textWasBackgroundedDuringProcessing = useRef(false);
   const recommendationCancelledRef = useRef(false);
   const [isRecommendationMode, setIsRecommendationMode] = useState(false);
-  const [recommendationAnswer, setRecommendationAnswer] = useState<string | null>(null);
+  const [recommendationHistory, setRecommendationHistory] = useState<LLMMessage[]>([]);
   const [isRecommendationProcessing, setIsRecommendationProcessing] = useState(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
   const {
@@ -1428,22 +1575,32 @@ export function HomeScreen() {
     Keyboard.dismiss();
     recommendationCancelledRef.current = false;
     setIsRecommendationProcessing(true);
-    setRecommendationAnswer(null);
     setRecommendationError(null);
+
+    const userMessage: LLMMessage = { role: 'user', content: text.trim() };
+    setRecommendationHistory((prev) => [...prev, userMessage]);
+    setTextInput('');
+
     try {
       const { isValid, answer } = await getRecommendation({
         question: text.trim(),
+        conversationHistory: recommendationHistory,
         currentTime: new Date(),
         todayLog: dailyLog,
         macroTargets: targets,
       });
       if (!recommendationCancelledRef.current) {
-        setRecommendationAnswer(isValid ? answer : 'Sorry I didn\'t get that. Try again.');
-        setTextInput('');
+        const assistantAnswer = isValid ? answer : 'Sorry I didn\'t get that. Try again.';
+        setRecommendationHistory((prev) => [
+          ...prev,
+          { role: 'assistant', content: assistantAnswer },
+        ]);
       }
     } catch (err) {
       if (!recommendationCancelledRef.current) {
         setRecommendationError(err instanceof Error ? err.message : 'Failed to get recommendation');
+        // Remove the unanswered user message on error
+        setRecommendationHistory((prev) => prev.slice(0, -1));
       }
     } finally {
       if (!recommendationCancelledRef.current) {
@@ -1720,25 +1877,26 @@ export function HomeScreen() {
           </View>
         </Animated.View>
 
-          {/* Status Indicator (renders on top) */}
-          {(isProcessing || isTextProcessing || isSavingFood || isRecommendationProcessing || voiceError || textError || recommendationError) && (
+          {/* Status Indicator (renders on top) — not shown for recommendations (card has its own spinner) */}
+          {(isProcessing || isTextProcessing || isSavingFood || voiceError || textError) && (
             <StatusIndicator
               isRecording={isRecording}
-              isProcessing={isProcessing || isTextProcessing || isRecommendationProcessing}
+              isProcessing={isProcessing || isTextProcessing}
               isSaving={isSavingFood}
               isRecommendationMode={isRecommendationMode}
-              error={voiceError || textError || recommendationError}
-              inputText={isProcessing ? transcript : (isTextProcessing || isRecommendationProcessing) ? textInput : undefined}
+              error={voiceError || textError}
+              inputText={isProcessing ? transcript : isTextProcessing ? textInput : undefined}
               onCancel={handleCancelAnalysis}
               onDismissError={handleDismissError}
             />
           )}
 
           {/* Recommendation Answer Card */}
-          {recommendationAnswer && (
+          {recommendationHistory.length > 0 && (
             <RecommendationCard
-              answer={recommendationAnswer}
-              onDismiss={() => setRecommendationAnswer(null)}
+              history={recommendationHistory}
+              isProcessing={isRecommendationProcessing}
+              onDismiss={() => setRecommendationHistory([])}
             />
           )}
 
@@ -1752,10 +1910,11 @@ export function HomeScreen() {
             isSavingFood={isSavingFood}
             isRecommendationProcessing={isRecommendationProcessing}
             isRecommendationMode={isRecommendationMode}
+            hasRecommendationHistory={recommendationHistory.length > 0}
             onToggleRecommendationMode={() => {
               setIsRecommendationMode((m) => !m);
               setTextInput('');
-              setRecommendationAnswer(null);
+              setRecommendationHistory([]);
             }}
             onMicPress={handleMicPress}
             onTextSubmit={handleTextSubmit}
@@ -1775,6 +1934,11 @@ export function HomeScreen() {
         userID={user?.userID || 'default-user'}
         calorieTarget={targets?.calories || 2700}
       />
+
+      {/* Recommendation Error Toast */}
+      {recommendationError && (
+        <Toast message={recommendationError} onDismiss={() => setRecommendationError(null)} />
+      )}
 
       {/* Modals rendered outside loading conditional to prevent unmount during refresh */}
       <MealDetailSheet

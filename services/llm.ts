@@ -7,8 +7,8 @@ import { LLMMessage, LLMResponseSchema, LLMProvider, FoodItemParsed, LLMResponse
 // Provider selection - gemini3 is the recommended default (supports web search + structured output)
 type ProviderType = 'openai' | 'gemini' | 'gemini3';
 
-// Default to Gemini 3 Flash - best price/performance with web search + structured output
-const DEFAULT_PROVIDER: ProviderType = 'gemini3';
+// Default to OpenAI - reliable web search + structured output
+const DEFAULT_PROVIDER: ProviderType = 'openai';
 
 function getProvider(providerType: ProviderType): LLMProvider {
   switch (providerType) {
@@ -59,10 +59,9 @@ export async function parseFoodInput({
     const modelToUse = model || getDefaultModel(provider);
     const messages = buildMessages(transcript, currentTime, todayLog, previousDayLogs);
 
-    // Determine if web search should be enabled
-    // Gemini 3 supports web search + structured output together
-    const isGemini3 = modelToUse.includes('gemini-3');
-    const useWebSearch = enableWebSearch && isGemini3;
+    // Web search: OpenAI and Gemini 3 support it with structured output; Gemini 2.5 does not
+    const supportsWebSearch = provider !== 'gemini';
+    const useWebSearch = enableWebSearch && supportsWebSearch;
 
     const result = await llmProvider.generate({
       model: modelToUse,
@@ -166,6 +165,7 @@ function validateAndNormalizeLLMResponse(response: LLMResponseParsed): LLMRespon
 
 interface GetRecommendationParams {
   question: string;
+  conversationHistory?: LLMMessage[];
   currentTime?: Date;
   todayLog: DailyLog;
   macroTargets: MacroTargets;
@@ -175,6 +175,7 @@ interface GetRecommendationParams {
 
 export async function getRecommendation({
   question,
+  conversationHistory = [],
   currentTime = new Date(),
   todayLog,
   macroTargets,
@@ -184,8 +185,8 @@ export async function getRecommendation({
   try {
     const llmProvider = getProvider(provider);
     const modelToUse = getDefaultModel(provider);
-    const isGemini3 = modelToUse.includes('gemini-3');
-    const useWebSearch = enableWebSearch && isGemini3;
+    const supportsWebSearch = provider !== 'gemini';
+    const useWebSearch = enableWebSearch && supportsWebSearch;
 
     const remaining = {
       calories: macroTargets.calories - todayLog.totalCalories,
@@ -213,12 +214,13 @@ Question: ${question}`;
       model: modelToUse,
       messages: [
         { role: 'system', content: recommendationPrompt },
+        ...conversationHistory,
         { role: 'user', content: userPrompt },
       ],
       schema: RecommendationResponseSchema,
       schemaName: 'recommendation_response',
       webSearch: useWebSearch,
-      reasoning: { effort: 'low' },
+      reasoning: { effort: 'medium' },
       temperature: 0.5,
     });
 
