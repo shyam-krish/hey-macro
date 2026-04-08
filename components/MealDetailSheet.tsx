@@ -7,6 +7,8 @@ import {
   Pressable,
   FlatList,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FoodEntry } from '../types';
@@ -151,7 +153,7 @@ function FoodItemRow({
                 }
                 placeholder="0"
                 placeholderTextColor="#555"
-                keyboardType={quantityUnit ? 'number-pad' : 'default'}
+                keyboardType={quantityUnit ? 'decimal-pad' : 'default'}
               />
               {quantityUnit ? (
                 <Text style={styles.quantityUnitSuffix}>{quantityUnit}</Text>
@@ -170,7 +172,7 @@ function FoodItemRow({
               onChangeText={(text) =>
                 onEditFormChange({ ...editForm, calories: text }, 'calories')
               }
-              keyboardType="number-pad"
+              keyboardType="decimal-pad"
               placeholder="0"
               placeholderTextColor="#666"
             />
@@ -184,7 +186,7 @@ function FoodItemRow({
                 onChangeText={(text) =>
                   onEditFormChange({ ...editForm, protein: text }, 'protein')
                 }
-                keyboardType="number-pad"
+                keyboardType="decimal-pad"
                 placeholder="0"
                 placeholderTextColor="#666"
               />
@@ -200,7 +202,7 @@ function FoodItemRow({
                 onChangeText={(text) =>
                   onEditFormChange({ ...editForm, carbs: text }, 'carbs')
                 }
-                keyboardType="number-pad"
+                keyboardType="decimal-pad"
                 placeholder="0"
                 placeholderTextColor="#666"
               />
@@ -216,7 +218,7 @@ function FoodItemRow({
                 onChangeText={(text) =>
                   onEditFormChange({ ...editForm, fat: text }, 'fat')
                 }
-                keyboardType="number-pad"
+                keyboardType="decimal-pad"
                 placeholder="0"
                 placeholderTextColor="#666"
               />
@@ -521,7 +523,10 @@ export function MealDetailSheet({
       onRequestClose={onClose}
       onDismiss={onModalHide}
     >
-      <View style={styles.sheetOverlay}>
+      <KeyboardAvoidingView
+        style={styles.sheetOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <Pressable style={styles.dismissArea} onPress={onClose} />
         <View style={styles.sheetContainer}>
           {/* Handle bar */}
@@ -584,7 +589,7 @@ export function MealDetailSheet({
             </View>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {/* Delete Confirmation Modal */}
       <Modal

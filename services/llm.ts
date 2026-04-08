@@ -168,6 +168,7 @@ interface GetRecommendationParams {
   conversationHistory?: LLMMessage[];
   currentTime?: Date;
   todayLog: DailyLog;
+  previousDayLogs?: DailyLog[];
   macroTargets: MacroTargets;
   provider?: ProviderType;
   enableWebSearch?: boolean;
@@ -178,6 +179,7 @@ export async function getRecommendation({
   conversationHistory = [],
   currentTime = new Date(),
   todayLog,
+  previousDayLogs,
   macroTargets,
   provider = DEFAULT_PROVIDER,
   enableWebSearch = true,
@@ -197,6 +199,16 @@ export async function getRecommendation({
 
     const mealsContext = formatMealsFromLog(todayLog);
 
+    let previousDaysContext = '';
+    if (previousDayLogs && previousDayLogs.length > 0) {
+      previousDaysContext = previousDayLogs
+        .map((log) => {
+          const meals = formatMealsFromLog(log);
+          return `${log.date}: ${meals.length > 0 ? meals.join(', ') : 'Nothing logged'}`;
+        })
+        .join('\n');
+    }
+
     const userPrompt = `Current Date/Time: ${currentTime.toISOString()}
 
 Macro Targets: Calories: ${macroTargets.calories}, Protein: ${macroTargets.protein}g, Carbs: ${macroTargets.carbs}g, Fat: ${macroTargets.fat}g
@@ -207,7 +219,7 @@ Remaining: Calories: ${remaining.calories}, Protein: ${remaining.protein}g, Carb
 
 Today's meals:
 ${mealsContext.length > 0 ? mealsContext.join('\n') : 'Nothing logged yet'}
-
+${previousDaysContext ? `\nPrevious days:\n${previousDaysContext}` : ''}
 Question: ${question}`;
 
     const result = await llmProvider.generate({
@@ -220,11 +232,20 @@ Question: ${question}`;
       schema: RecommendationResponseSchema,
       schemaName: 'recommendation_response',
       webSearch: useWebSearch,
-      reasoning: { effort: 'medium' },
+      reasoning: { effort: 'low' },
       temperature: 0.5,
     });
 
-    return { isValid: result.isValid, answer: result.answer };
+    // Strip markdown formatting and citation links the model may include
+    const cleanAnswer = result.answer
+      .replace(/\[([^\]]*)\]\(https?:\/\/[^)]+\)/g, '') // [text](url)
+      .replace(/\(https?:\/\/[^)]+\)/g, '')             // (url)
+      .replace(/https?:\/\/\S+/g, '')                   // bare urls
+      .replace(/\*\*/g, '')                              // **bold**
+      .replace(/\s{2,}/g, ' ')                           // collapse whitespace
+      .trim();
+
+    return { isValid: result.isValid, answer: cleanAnswer };
   } catch (error) {
     throw new Error(
       `Failed to get recommendation: ${error instanceof Error ? error.message : 'Unknown error'}`

@@ -4,6 +4,7 @@ import {
   StyleSheet,
   Text,
   View,
+  DimensionValue,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -145,8 +146,12 @@ function MacroProgressBar({
   target: number;
   animatedProgress?: Animated.Value;
 }) {
+  const isOver = current > target;
   const progress = Math.min(current / target, 1);
   const widthPercent = `${progress * 100}%` as const;
+  const overflowPercent = (isOver
+    ? `${Math.min(((current - target) / target) * 100, 100)}%`
+    : '0%') as DimensionValue
 
   // Animate width if animated value provided
   const animatedWidth = animatedProgress
@@ -161,7 +166,7 @@ function MacroProgressBar({
       <View style={styles.progressBarHeader}>
         <Text style={styles.progressBarLabel}>{label}</Text>
         <Text style={styles.progressBarValue}>
-          <Text style={styles.progressBarCurrent}>{current}</Text>/{target}
+          <Text style={[styles.progressBarCurrent, isOver && styles.progressBarOver]}>{current}</Text>/{target}
         </Text>
       </View>
       <View style={styles.progressBarTrack}>
@@ -169,6 +174,9 @@ function MacroProgressBar({
           <Animated.View style={[styles.progressBarFill, { width: animatedWidth }]} />
         ) : (
           <View style={[styles.progressBarFill, { width: widthPercent }]} />
+        )}
+        {isOver && (
+          <View style={[styles.progressBarOverflow, { width: overflowPercent }]} />
         )}
       </View>
     </View>
@@ -1587,6 +1595,7 @@ export function HomeScreen() {
         conversationHistory: recommendationHistory,
         currentTime: new Date(),
         todayLog: dailyLog,
+        previousDayLogs: previousDayLogs.length > 0 ? previousDayLogs : undefined,
         macroTargets: targets,
       });
       if (!recommendationCancelledRef.current) {
@@ -2047,6 +2056,17 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#fff',
     borderRadius: 4,
+  },
+  progressBarOverflow: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    height: '100%',
+    backgroundColor: '#dc2626',
+    borderRadius: 4,
+  },
+  progressBarOver: {
+    color: '#fff',
   },
 
   // Food Section
