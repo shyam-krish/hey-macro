@@ -19,8 +19,9 @@ const CALORIE_COLOR = ACCENT_COLOR;
 const WEIGHT_COLOR = '#F59E0B';
 
 const CHART_HEIGHT = 220;
-const CHART_PADDING_LEFT = 45;
-const CHART_PADDING_RIGHT = 16;
+const CHART_PADDING_LEFT = 50;
+const CHART_PADDING_RIGHT_DEFAULT = 30;
+const CHART_PADDING_RIGHT_DUAL = 45;
 const CHART_PADDING_TOP = 16;
 const CHART_PADDING_BOTTOM = 32;
 
@@ -60,12 +61,15 @@ function niceRange(values: number[]): { min: number; max: number; step: number }
     max = max + 10;
   }
   const range = max - min;
-  // Pick a step that gives roughly 4 ticks
-  const rawStep = range / 4;
+  // Pick a step that gives roughly 4 ticks, with a minimum step of 0.5
+  const rawStep = Math.max(range / 4, 0.2);
   const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const step = Math.ceil(rawStep / magnitude) * magnitude;
+  const step = Math.max(Math.ceil(rawStep / magnitude) * magnitude, 0.2);
+  const precision = step < 1 ? 10 / step : 1;
   min = Math.floor(min / step) * step;
   max = Math.ceil(max / step) * step;
+  min = Math.round(min * precision) / precision;
+  max = Math.round(max * precision) / precision;
   return { min, max, step };
 }
 
@@ -88,7 +92,8 @@ function LineChart({
     );
   }
 
-  const plotWidth = chartWidth - CHART_PADDING_LEFT - CHART_PADDING_RIGHT;
+  const paddingRight = (showCalories && showWeight) ? CHART_PADDING_RIGHT_DUAL : CHART_PADDING_RIGHT_DEFAULT;
+  const plotWidth = chartWidth - CHART_PADDING_LEFT - paddingRight;
   const plotHeight = CHART_HEIGHT - CHART_PADDING_TOP - CHART_PADDING_BOTTOM;
 
   // Filter to points with actual data
@@ -147,7 +152,7 @@ function LineChart({
   }
   const weightTicks: number[] = [];
   if (showWeight) {
-    for (let v = weightRange.min; v <= weightRange.max; v += weightRange.step) weightTicks.push(v);
+    for (let v = weightRange.min; v <= weightRange.max; v += weightRange.step) weightTicks.push(Math.round(v * 100) / 100);
   }
 
   // Use calorie ticks for left axis, weight ticks for right if both shown
@@ -163,7 +168,7 @@ function LineChart({
         <Line
           key={`grid-${tick}`}
           x1={CHART_PADDING_LEFT}
-          x2={chartWidth - CHART_PADDING_RIGHT}
+          x2={chartWidth - paddingRight}
           y1={leftYFn(tick)}
           y2={leftYFn(tick)}
           stroke="#222"
@@ -182,7 +187,7 @@ function LineChart({
           fill="#666"
           fontFamily="DIN Alternate"
         >
-          {tick >= 1000 ? `${(tick / 1000).toFixed(1)}k` : String(tick)}
+          {String(tick)}
         </SvgText>
       ))}
 
@@ -190,14 +195,14 @@ function LineChart({
       {showCalories && showWeight && weightTicks.map((tick) => (
         <SvgText
           key={`wytick-${tick}`}
-          x={chartWidth - CHART_PADDING_RIGHT + 6}
+          x={chartWidth - paddingRight + 6}
           y={yWeight(tick) + 4}
           textAnchor="start"
           fontSize={11}
           fill={WEIGHT_COLOR}
           fontFamily="DIN Alternate"
         >
-          {String(tick)}
+          {Number.isInteger(tick) ? String(tick) : tick.toFixed(1)}
         </SvgText>
       ))}
 
