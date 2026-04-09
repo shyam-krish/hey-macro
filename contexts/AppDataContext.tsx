@@ -1,5 +1,5 @@
 import React, { createContext, useContext, ReactNode } from 'react';
-import { MacroTargets, DailyLog, User } from '../types';
+import { MacroTargets, DailyLog, User, WeightLog } from '../types';
 
 interface AppData {
   user: User | null;
@@ -18,6 +18,9 @@ interface AppData {
     newUser: Omit<User, 'createdAt' | 'updatedAt'>
   ) => Promise<void>;
   invalidateCache: (date?: string) => void;
+  todayWeight: WeightLog | null;
+  previousWeight: WeightLog | null;
+  saveWeight: (weight: number) => Promise<void>;
 }
 
 const AppDataContext = createContext<AppData | null>(null);

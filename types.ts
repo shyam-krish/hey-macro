@@ -61,6 +61,13 @@ export interface LLMResponse {
   snacks: FoodItem[];
 }
 
+export interface WeightLog extends BaseEntity {
+  weightLogID: string;
+  userID: string;
+  date: string; // YYYY-MM-DD
+  weight: number; // lbs, one decimal precision
+}
+
 export interface DateCalorieData {
   date: string; // YYYY-MM-DD
   calories: number;

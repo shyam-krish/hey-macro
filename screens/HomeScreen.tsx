@@ -35,6 +35,7 @@ import { LLMResponse } from '../types';
 import { MealDetailSheet } from '../components/MealDetailSheet';
 import { TopBar } from '../components/TopBar';
 import { CalendarDropdown } from '../components/CalendarDropdown';
+import { WeightInputSheet } from '../components/WeightInputSheet';
 import { HomeScreenNavigationProp } from '../navigation/types';
 
 // Accent color
@@ -998,7 +999,7 @@ type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snacks';
 export function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const { width: screenWidth } = useWindowDimensions();
-  const { user, targets, dailyLog, loading, error, refresh, selectedDate, changeDate } =
+  const { user, targets, dailyLog, loading, error, refresh, selectedDate, changeDate, todayWeight, previousWeight, saveWeight } =
     useAppDataContext();
   const [selectedMeal, setSelectedMeal] = useState<{ title: string; type: MealType } | null>(
     null
@@ -1024,6 +1025,7 @@ export function HomeScreen() {
     setSelectedMeal(null);
   };
   const [calendarVisible, setCalendarVisible] = useState(false);
+  const [weightSheetVisible, setWeightSheetVisible] = useState(false);
   const [textInput, setTextInput] = useState('');
   const [isTextProcessing, setIsTextProcessing] = useState(false);
   const [textParsedFood, setTextParsedFood] = useState<LLMResponse | null>(null);
@@ -1779,6 +1781,25 @@ export function HomeScreen() {
             </View>
           </View>
 
+          {/* Weight Card */}
+          <TouchableOpacity
+            style={styles.weightCard}
+            onPress={() => setWeightSheetVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.weightLabel}>Weight</Text>
+            {todayWeight ? (
+              <Text style={styles.weightValue}>
+                {todayWeight.weight} <Text style={styles.weightUnit}>lbs</Text>
+              </Text>
+            ) : (
+              <View style={styles.weightPromptRow}>
+                <Text style={styles.weightPrompt}>tap to log</Text>
+                <Text style={styles.weightPlus}>+</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
           {/* Food Section */}
           <View style={{ flex: 1, position: 'relative' }}>
             {(() => {
@@ -1949,6 +1970,15 @@ export function HomeScreen() {
         <Toast message={recommendationError} onDismiss={() => setRecommendationError(null)} />
       )}
 
+      {/* Weight Input Sheet */}
+      <WeightInputSheet
+        visible={weightSheetVisible}
+        onClose={() => setWeightSheetVisible(false)}
+        onSave={saveWeight}
+        currentWeight={todayWeight?.weight ?? null}
+        previousWeight={previousWeight?.weight ?? null}
+      />
+
       {/* Modals rendered outside loading conditional to prevent unmount during refresh */}
       <MealDetailSheet
         visible={mealSheetVisible}
@@ -2067,6 +2097,53 @@ const styles = StyleSheet.create({
   },
   progressBarOver: {
     color: '#fff',
+  },
+
+  // Weight Card
+  weightCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 20,
+    marginTop: 16,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  weightLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
+  },
+  weightValue: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'DIN Alternate',
+    fontWeight: 'bold',
+  },
+  weightUnit: {
+    color: '#888',
+    fontSize: 14,
+    fontFamily: 'Avenir Next',
+    fontWeight: 'normal',
+  },
+  weightPromptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  weightPrompt: {
+    color: '#666',
+    fontSize: 14,
+    fontFamily: 'Avenir Next',
+  },
+  weightPlus: {
+    color: '#888',
+    fontSize: 18,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
   },
 
   // Food Section

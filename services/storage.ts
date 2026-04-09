@@ -6,7 +6,7 @@
 import 'react-native-get-random-values'; // Must be imported before uuid
 import * as SQLite from 'expo-sqlite';
 import { v4 as uuidv4 } from 'uuid';
-import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse, DateCalorieData } from '../types';
+import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse, DateCalorieData, WeightLog } from '../types';
 
 const DATABASE_NAME = 'heymacro.db';
 const DEFAULT_USER_ID = 'default-user';
@@ -138,6 +138,22 @@ async function runMigrations(): Promise<void> {
         ALTER TABLE daily_logs ADD COLUMN targetFat INTEGER DEFAULT 90;
       `);
     }
+
+    // Create weight_logs table if it doesn't exist
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS weight_logs (
+        weightLogID TEXT PRIMARY KEY,
+        userID TEXT NOT NULL,
+        date TEXT NOT NULL,
+        weight REAL NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        FOREIGN KEY (userID) REFERENCES users(userID)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_weight_logs_user_date
+        ON weight_logs(userID, date);
+    `);
   } catch (error) {
     throw error;
   }
@@ -654,6 +670,72 @@ export async function getPreviousDaysLogs(
 }
 
 /**
+ * Get weight log for a specific date
+ * Returns null if no weight logged for that date
+ */
+export async function getWeightLog(userID: string, date: string): Promise<WeightLog | null> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const result = await db.getFirstAsync<WeightLog>(
+      'SELECT * FROM weight_logs WHERE userID = ? AND date = ?',
+      [userID, date]
+    );
+    return result || null;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Save (insert or update) weight for a specific date
+ */
+export async function saveWeightLog(userID: string, date: string, weight: number): Promise<WeightLog> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const now = getCurrentTimestamp();
+    const existing = await getWeightLog(userID, date);
+
+    if (existing) {
+      await db.runAsync(
+        'UPDATE weight_logs SET weight = ?, updatedAt = ? WHERE weightLogID = ?',
+        [weight, now, existing.weightLogID]
+      );
+      return { ...existing, weight, updatedAt: now };
+    }
+
+    const weightLogID = uuidv4();
+    await db.runAsync(
+      'INSERT INTO weight_logs (weightLogID, userID, date, weight, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
+      [weightLogID, userID, date, weight, now, now]
+    );
+
+    return { weightLogID, userID, date, weight, createdAt: now, updatedAt: now };
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Get the most recent weight log before a given date
+ * Useful for pre-filling the input with yesterday's weight
+ */
+export async function getPreviousWeightLog(userID: string, beforeDate: string): Promise<WeightLog | null> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const result = await db.getFirstAsync<WeightLog>(
+      'SELECT * FROM weight_logs WHERE userID = ? AND date < ? ORDER BY date DESC LIMIT 1',
+      [userID, beforeDate]
+    );
+    return result || null;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
  * Clear all data (for testing)
  */
 export async function clearAllData(): Promise<void> {
@@ -663,6 +745,7 @@ export async function clearAllData(): Promise<void> {
     await db.execAsync(`
       DELETE FROM food_entries;
       DELETE FROM daily_logs;
+      DELETE FROM weight_logs;
       DELETE FROM macro_targets;
       DELETE FROM users;
     `);

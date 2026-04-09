@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MacroTargets, DailyLog, User } from '../types';
+import { MacroTargets, DailyLog, User, WeightLog } from '../types';
 import {
   initDatabase,
   getOrCreateDefaultUser,
@@ -7,6 +7,9 @@ import {
   getOrCreateDailyLog,
   updateMacroTargets,
   updateUser,
+  getWeightLog,
+  saveWeightLog,
+  getPreviousWeightLog,
 } from '../services/storage';
 import { mockTargets, mockDailyLog } from '../constants';
 
@@ -43,6 +46,9 @@ interface AppData {
     newUser: Omit<User, 'createdAt' | 'updatedAt'>
   ) => Promise<void>;
   invalidateCache: (date?: string) => void;
+  todayWeight: WeightLog | null;
+  previousWeight: WeightLog | null;
+  saveWeight: (weight: number) => Promise<void>;
 }
 
 // Number of days to pre-fetch in each direction
@@ -58,6 +64,8 @@ export function useAppData(): AppData {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString());
+  const [todayWeight, setTodayWeight] = useState<WeightLog | null>(null);
+  const [previousWeight, setPreviousWeight] = useState<WeightLog | null>(null);
 
   // Cache for daily logs by date
   const logCache = useRef<Map<string, DailyLog>>(new Map());
@@ -119,6 +127,12 @@ export function useAppData(): AppData {
       }
       setDailyLog(dbDailyLog);
 
+      // Load weight data for selected date
+      const weightLog = await getWeightLog(dbUser.userID, targetDate);
+      setTodayWeight(weightLog);
+      const prevWeight = await getPreviousWeightLog(dbUser.userID, targetDate);
+      setPreviousWeight(prevWeight);
+
       // Pre-fetch surrounding days in background
       prefetchSurroundingDays(targetDate, dbUser.userID);
     } catch (err) {
@@ -137,8 +151,12 @@ export function useAppData(): AppData {
       setSelectedDate(newDate);
       setDailyLog(cachedLog);
 
-      // Refresh in background and update cache
+      // Load weight for the new date
       if (userRef.current) {
+        const weightLog = await getWeightLog(userRef.current.userID, newDate);
+        setTodayWeight(weightLog);
+        const prevWeight = await getPreviousWeightLog(userRef.current.userID, newDate);
+        setPreviousWeight(prevWeight);
         prefetchSurroundingDays(newDate, userRef.current.userID);
       }
     } else {
@@ -181,6 +199,13 @@ export function useAppData(): AppData {
     }
   };
 
+  const saveWeightHandler = async (weight: number) => {
+    const uid = userRef.current?.userID;
+    if (!uid) return;
+    const saved = await saveWeightLog(uid, selectedDate, weight);
+    setTodayWeight(saved);
+  };
+
   const updateUserHandler = async (
     newUser: Omit<User, 'createdAt' | 'updatedAt'>
   ) => {
@@ -208,5 +233,8 @@ export function useAppData(): AppData {
     updateTargets: updateTargetsHandler,
     updateUser: updateUserHandler,
     invalidateCache,
+    todayWeight,
+    previousWeight,
+    saveWeight: saveWeightHandler,
   };
 }
