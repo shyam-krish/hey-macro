@@ -55,6 +55,7 @@ export function TopBar({
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const iconRef = useRef<View>(null);
+  const pendingAction = useRef<(() => void) | null>(null);
 
   const handlePrevDay = () => {
     const date = parseLocalDate(selectedDate);
@@ -77,8 +78,15 @@ export function TopBar({
   };
 
   const handleMenuItem = (action: () => void) => {
+    pendingAction.current = action;
     setMenuVisible(false);
-    action();
+  };
+
+  const handleMenuDismiss = () => {
+    if (pendingAction.current) {
+      pendingAction.current();
+      pendingAction.current = null;
+    }
   };
 
   return (
@@ -131,6 +139,7 @@ export function TopBar({
         transparent
         animationType="fade"
         onRequestClose={() => setMenuVisible(false)}
+        onDismiss={handleMenuDismiss}
       >
         <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
           <View style={styles.menuBackdrop}>
