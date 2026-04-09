@@ -6,6 +6,7 @@ import { useAppData } from './hooks/useAppData';
 import { AppDataProvider } from './contexts/AppDataContext';
 import { HomeScreen } from './screens/HomeScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { TrendsScreen } from './screens/TrendsScreen';
 import { RootStackParamList } from './navigation/types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -35,6 +36,7 @@ function AppContent() {
         >
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="Trends" component={TrendsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </AppDataProvider>

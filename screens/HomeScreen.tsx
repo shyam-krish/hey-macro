@@ -1728,6 +1728,7 @@ export function HomeScreen() {
         selectedDate={selectedDate}
         onDateChange={changeDate}
         onCalendarPress={() => setCalendarVisible(true)}
+        onTrendsPress={() => navigation.navigate('Trends')}
         onProfilePress={() => navigation.navigate('Profile')}
       />
 

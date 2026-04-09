@@ -6,7 +6,7 @@
 import 'react-native-get-random-values'; // Must be imported before uuid
 import * as SQLite from 'expo-sqlite';
 import { v4 as uuidv4 } from 'uuid';
-import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse, DateCalorieData, WeightLog } from '../types';
+import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse, DateCalorieData, WeightLog, TrendDataPoint } from '../types';
 
 const DATABASE_NAME = 'heymacro.db';
 const DEFAULT_USER_ID = 'default-user';
@@ -455,6 +455,29 @@ export async function getMonthCalorieData(
 }
 
 /**
+ * Get weight data for all dates in a specific month
+ */
+export async function getMonthWeightData(
+  userID: string,
+  year: number,
+  month: number // 0-indexed
+): Promise<{ date: string; weight: number }[]> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const startDate = formatLocalDate(new Date(year, month, 1));
+    const endDate = formatLocalDate(new Date(year, month + 1, 0));
+
+    return await db.getAllAsync<{ date: string; weight: number }>(
+      'SELECT date, weight FROM weight_logs WHERE userID = ? AND date >= ? AND date <= ? ORDER BY date ASC',
+      [userID, startDate, endDate]
+    );
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
  * Get the earliest date with data for a user
  * Returns null if no data exists
  */
@@ -730,6 +753,47 @@ export async function getPreviousWeightLog(userID: string, beforeDate: string): 
       [userID, beforeDate]
     );
     return result || null;
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Get trend data (calories + weight) for a date range
+ * Returns one point per date, merging daily_logs and weight_logs
+ */
+export async function getTrendData(
+  userID: string,
+  startDate: string,
+  endDate: string
+): Promise<TrendDataPoint[]> {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    const rows = await db.getAllAsync<TrendDataPoint>(
+      `SELECT
+        d.date,
+        dl.totalCalories as calories,
+        dl.targetCalories as calorieTarget,
+        wl.weight
+      FROM (
+        -- Generate all dates in range from both tables
+        SELECT date FROM daily_logs WHERE userID = ? AND date >= ? AND date <= ?
+        UNION
+        SELECT date FROM weight_logs WHERE userID = ? AND date >= ? AND date <= ?
+      ) d
+      LEFT JOIN daily_logs dl ON dl.date = d.date AND dl.userID = ?
+      LEFT JOIN weight_logs wl ON wl.date = d.date AND wl.userID = ?
+      ORDER BY d.date ASC`,
+      [userID, startDate, endDate, userID, startDate, endDate, userID, userID]
+    );
+
+    return rows.map((row) => ({
+      date: row.date,
+      calories: row.calories ?? null,
+      calorieTarget: row.calorieTarget ?? null,
+      weight: row.weight ?? null,
+    }));
   } catch (error) {
     throw error;
   }

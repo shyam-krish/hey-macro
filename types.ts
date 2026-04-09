@@ -68,6 +68,13 @@ export interface WeightLog extends BaseEntity {
   weight: number; // lbs, one decimal precision
 }
 
+export interface TrendDataPoint {
+  date: string; // YYYY-MM-DD
+  calories: number | null;
+  calorieTarget: number | null;
+  weight: number | null;
+}
+
 export interface DateCalorieData {
   date: string; // YYYY-MM-DD
   calories: number;

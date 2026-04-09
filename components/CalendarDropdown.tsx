@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { DateCalorieData } from '../types';
-import { getMonthCalorieData, getEarliestLogDate } from '../services/storage';
+import { getMonthCalorieData, getMonthWeightData, getEarliestLogDate } from '../services/storage';
 
 // Accent color
 const ACCENT_COLOR = '#3FE0DB';
@@ -32,6 +32,7 @@ interface CalendarDay {
   isFuture: boolean;
   calories: number;
   calorieTarget: number;
+  weight: number | null;
 }
 
 function CalorieRing({
@@ -106,7 +107,8 @@ function generateCalendarDays(
   year: number,
   month: number, // 0-indexed
   selectedDate: string,
-  calorieData: Map<string, DateCalorieData>
+  calorieData: Map<string, DateCalorieData>,
+  weightData: Map<string, number>
 ): (CalendarDay | null)[] {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
@@ -135,6 +137,7 @@ function generateCalendarDays(
       isFuture: date > today,
       calories: calorieInfo?.calories || 0,
       calorieTarget: calorieInfo?.calorieTarget || 2700,
+      weight: weightData.get(date) ?? null,
     });
   }
 
@@ -154,6 +157,7 @@ export function CalendarDropdown({
   const [calorieData, setCalorieData] = useState<Map<string, DateCalorieData>>(
     new Map()
   );
+  const [weightData, setWeightData] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(false);
   const [earliestDate, setEarliestDate] = useState<string | null>(null);
 
@@ -186,20 +190,23 @@ export function CalendarDropdown({
   useEffect(() => {
     if (!visible) return;
 
-    const fetchCalorieData = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
-        const data = await getMonthCalorieData(userID, displayedYear, displayedMonth);
-        const dataMap = new Map(data.map((d) => [d.date, d]));
-        setCalorieData(dataMap);
+        const [calData, wtData] = await Promise.all([
+          getMonthCalorieData(userID, displayedYear, displayedMonth),
+          getMonthWeightData(userID, displayedYear, displayedMonth),
+        ]);
+        setCalorieData(new Map(calData.map((d) => [d.date, d])));
+        setWeightData(new Map(wtData.map((d) => [d.date, d.weight])));
       } catch {
-        // Silently fail - calendar will render without calorie data
+        // Silently fail - calendar will render without data
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCalorieData();
+    fetchData();
   }, [visible, userID, displayedYear, displayedMonth]);
 
   // Check if we can navigate to previous month (must have data)
@@ -257,7 +264,8 @@ export function CalendarDropdown({
     displayedYear,
     displayedMonth,
     selectedDate,
-    calorieData
+    calorieData,
+    weightData
   );
 
   return (
@@ -332,24 +340,31 @@ export function CalendarDropdown({
                   activeOpacity={isDisabled ? 1 : 0.7}
                   disabled={isDisabled}
                 >
-                  {day.calories > 0 && (
-                    <CalorieRing
-                      calories={day.calories}
-                      target={day.calorieTarget}
-                      size={32}
-                      isToday={day.isToday}
-                    />
+                  <View style={styles.dayRingContainer}>
+                    {day.calories > 0 && (
+                      <CalorieRing
+                        calories={day.calories}
+                        target={day.calorieTarget}
+                        size={32}
+                        isToday={day.isToday}
+                      />
+                    )}
+                    <Text
+                      style={[
+                        styles.dayNumber,
+                        isDisabled && styles.dayNumberDisabled,
+                        day.isSelected && styles.dayNumberSelected,
+                        day.isToday && !day.isSelected && styles.dayNumberToday,
+                      ]}
+                    >
+                      {day.dayNumber}
+                    </Text>
+                  </View>
+                  {day.weight !== null && (
+                    <Text style={[styles.dayWeight, isDisabled && styles.dayWeightDisabled]}>
+                      {day.weight}
+                    </Text>
                   )}
-                  <Text
-                    style={[
-                      styles.dayNumber,
-                      isDisabled && styles.dayNumberDisabled,
-                      day.isSelected && styles.dayNumberSelected,
-                      day.isToday && !day.isSelected && styles.dayNumberToday,
-                    ]}
-                  >
-                    {day.dayNumber}
-                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -426,7 +441,7 @@ const styles = StyleSheet.create({
   },
   dayCell: {
     width: '14.28%', // 100% / 7 days
-    aspectRatio: 1,
+    height: 52,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -440,6 +455,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: ACCENT_COLOR,
     borderRadius: 16,
+  },
+  dayRingContainer: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   dayNumber: {
     color: '#fff',
@@ -456,5 +477,15 @@ const styles = StyleSheet.create({
   },
   dayNumberToday: {
     color: ACCENT_COLOR,
+  },
+  dayWeight: {
+    color: '#888',
+    fontSize: 9,
+    fontFamily: 'DIN Alternate',
+    marginTop: 1,
+    zIndex: 1,
+  },
+  dayWeightDisabled: {
+    color: '#333',
   },
 });
