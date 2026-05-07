@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "HeyMacro",
+    "name": "Intake",
     "slug": "hey-macro",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -39,8 +39,8 @@
       [
         "@react-native-voice/voice",
         {
-          "microphonePermission": "Allow Hey Macro to access the microphone to record food entries",
-          "speechRecognitionPermission": "Allow Hey Macro to recognize speech for logging meals"
+          "microphonePermission": "Allow Intake to access the microphone to record food entries",
+          "speechRecognitionPermission": "Allow Intake to recognize speech for logging meals"
         }
       ]
     ],
