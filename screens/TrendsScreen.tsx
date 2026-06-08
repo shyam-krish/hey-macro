@@ -11,8 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Line, Circle, Polyline, Rect, Text as SvgText } from 'react-native-svg';
-import { getTrendData } from '../services/storage';
-import { TrendDataPoint } from '../types';
+import { getTrendData, getMealAverages } from '../services/storage';
+import { TrendDataPoint, MealAverages, MealAverage } from '../types';
 
 const ACCENT_COLOR = '#3FE0DB';
 const CALORIE_COLOR = ACCENT_COLOR;
@@ -286,9 +286,159 @@ const chartStyles = StyleSheet.create({
   },
 });
 
+const MEAL_ROWS: { key: keyof Omit<MealAverages, 'loggedDays' | 'total'>; label: string }[] = [
+  { key: 'breakfast', label: 'Breakfast' },
+  { key: 'lunch', label: 'Lunch' },
+  { key: 'dinner', label: 'Dinner' },
+  { key: 'snacks', label: 'Snacks' },
+];
+
+function MealAverageRow({
+  label,
+  avg,
+  maxCalories,
+  isTotal,
+}: {
+  label: string;
+  avg: MealAverage;
+  maxCalories: number;
+  isTotal?: boolean;
+}) {
+  const barFraction = maxCalories > 0 ? avg.calories / maxCalories : 0;
+  return (
+    <View style={[mealStyles.row, isTotal && mealStyles.totalRow]}>
+      <View style={mealStyles.rowHeader}>
+        <Text style={[mealStyles.mealLabel, isTotal && mealStyles.totalLabel]}>{label}</Text>
+        <Text style={[mealStyles.mealCalories, isTotal && mealStyles.totalLabel]}>
+          {avg.calories.toLocaleString()} cal
+        </Text>
+      </View>
+      {!isTotal && (
+        <View style={mealStyles.barTrack}>
+          <View style={[mealStyles.barFill, { width: `${Math.round(barFraction * 100)}%` }]} />
+        </View>
+      )}
+      <Text style={mealStyles.macroText}>
+        {avg.protein}g P · {avg.carbs}g C · {avg.fat}g F
+      </Text>
+    </View>
+  );
+}
+
+function MealAveragesSection({ averages }: { averages: MealAverages | null }) {
+  if (!averages || averages.loggedDays === 0) {
+    return (
+      <View style={mealStyles.container}>
+        <Text style={mealStyles.sectionTitle}>Avg per meal</Text>
+        <Text style={chartStyles.emptyText}>No meals logged for this range</Text>
+      </View>
+    );
+  }
+
+  const maxCalories = Math.max(
+    averages.breakfast.calories,
+    averages.lunch.calories,
+    averages.dinner.calories,
+    averages.snacks.calories,
+    1
+  );
+
+  return (
+    <View style={mealStyles.container}>
+      <View style={mealStyles.sectionHeader}>
+        <Text style={mealStyles.sectionTitle}>Avg per meal</Text>
+        <Text style={mealStyles.sectionSubtitle}>
+          over {averages.loggedDays} logged {averages.loggedDays === 1 ? 'day' : 'days'}
+        </Text>
+      </View>
+      {MEAL_ROWS.map((m) => (
+        <MealAverageRow
+          key={m.key}
+          label={m.label}
+          avg={averages[m.key]}
+          maxCalories={maxCalories}
+        />
+      ))}
+      <MealAverageRow label="Total" avg={averages.total} maxCalories={maxCalories} isTotal />
+    </View>
+  );
+}
+
+const mealStyles = StyleSheet.create({
+  container: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 16,
+    gap: 14,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'Avenir Next',
+    fontWeight: '600',
+  },
+  sectionSubtitle: {
+    color: '#888',
+    fontSize: 12,
+    fontFamily: 'Avenir Next',
+  },
+  row: {
+    gap: 6,
+  },
+  totalRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    paddingTop: 12,
+    marginTop: 2,
+  },
+  rowHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
+  mealLabel: {
+    color: '#ddd',
+    fontSize: 14,
+    fontFamily: 'Avenir Next',
+    fontWeight: '500',
+  },
+  totalLabel: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  mealCalories: {
+    color: ACCENT_COLOR,
+    fontSize: 14,
+    fontFamily: 'DIN Alternate',
+    fontWeight: 'bold',
+  },
+  barTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#2a2a2a',
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: ACCENT_COLOR,
+  },
+  macroText: {
+    color: '#888',
+    fontSize: 12,
+    fontFamily: 'DIN Alternate',
+  },
+});
+
 export function TrendsScreen() {
   const navigation = useNavigation();
   const [data, setData] = useState<TrendDataPoint[]>([]);
+  const [mealAverages, setMealAverages] = useState<MealAverages | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<RangeKey>('30d');
   const [showCalories, setShowCalories] = useState(true);
@@ -300,10 +450,15 @@ export function TrendsScreen() {
     try {
       const endDate = formatLocalDate(new Date());
       const startDate = getDateNDaysAgo(days);
-      const result = await getTrendData('default-user', startDate, endDate);
+      const [result, averages] = await Promise.all([
+        getTrendData('default-user', startDate, endDate),
+        getMealAverages('default-user', startDate, endDate),
+      ]);
       setData(result);
+      setMealAverages(averages);
     } catch {
       setData([]);
+      setMealAverages(null);
     } finally {
       setLoading(false);
     }
@@ -431,6 +586,9 @@ export function TrendsScreen() {
             </View>
           )}
         </View>
+
+        {/* Per-meal Averages */}
+        {!loading && <MealAveragesSection averages={mealAverages} />}
       </ScrollView>
     </SafeAreaView>
   );

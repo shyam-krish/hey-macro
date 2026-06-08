@@ -6,7 +6,7 @@
 import 'react-native-get-random-values'; // Must be imported before uuid
 import * as SQLite from 'expo-sqlite';
 import { v4 as uuidv4 } from 'uuid';
-import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse, DateCalorieData, WeightLog, TrendDataPoint } from '../types';
+import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse, DateCalorieData, WeightLog, TrendDataPoint, MealAverage, MealAverages } from '../types';
 
 const DATABASE_NAME = 'heymacro.db';
 const DEFAULT_USER_ID = 'default-user';
@@ -794,6 +794,96 @@ export async function getTrendData(
       calorieTarget: row.calorieTarget ?? null,
       weight: row.weight ?? null,
     }));
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Get average macros per meal (breakfast/lunch/dinner/snacks) and total
+ * across a date range. Averages are divided by the number of distinct days
+ * that have any food logged in the range (not the full calendar span).
+ */
+export async function getMealAverages(
+  userID: string,
+  startDate: string,
+  endDate: string
+): Promise<MealAverages> {
+  if (!db) throw new Error('Database not initialized');
+
+  const emptyAverage = (): MealAverage => ({ calories: 0, protein: 0, carbs: 0, fat: 0 });
+  const empty: MealAverages = {
+    loggedDays: 0,
+    breakfast: emptyAverage(),
+    lunch: emptyAverage(),
+    dinner: emptyAverage(),
+    snacks: emptyAverage(),
+    total: emptyAverage(),
+  };
+
+  try {
+    // Count distinct days with any food logged in the range
+    const dayRow = await db.getFirstAsync<{ days: number }>(
+      `SELECT COUNT(DISTINCT dl.date) as days
+       FROM daily_logs dl
+       JOIN food_entries fe ON fe.dailyLogID = dl.dailyLogID
+       WHERE dl.userID = ? AND dl.date >= ? AND dl.date <= ?`,
+      [userID, startDate, endDate]
+    );
+    const loggedDays = dayRow?.days ?? 0;
+    if (loggedDays === 0) return empty;
+
+    // Sum macros per meal type across the range
+    const rows = await db.getAllAsync<{
+      mealType: string;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+    }>(
+      `SELECT
+        fe.mealType as mealType,
+        SUM(fe.calories) as calories,
+        SUM(fe.protein) as protein,
+        SUM(fe.carbs) as carbs,
+        SUM(fe.fat) as fat
+      FROM food_entries fe
+      JOIN daily_logs dl ON dl.dailyLogID = fe.dailyLogID
+      WHERE fe.userID = ? AND dl.date >= ? AND dl.date <= ?
+      GROUP BY fe.mealType`,
+      [userID, startDate, endDate]
+    );
+
+    const result: MealAverages = {
+      loggedDays,
+      breakfast: emptyAverage(),
+      lunch: emptyAverage(),
+      dinner: emptyAverage(),
+      snacks: emptyAverage(),
+      total: emptyAverage(),
+    };
+
+    for (const row of rows) {
+      const avg: MealAverage = {
+        calories: Math.round((row.calories ?? 0) / loggedDays),
+        protein: Math.round((row.protein ?? 0) / loggedDays),
+        carbs: Math.round((row.carbs ?? 0) / loggedDays),
+        fat: Math.round((row.fat ?? 0) / loggedDays),
+      };
+      if (row.mealType === 'breakfast') result.breakfast = avg;
+      else if (row.mealType === 'lunch') result.lunch = avg;
+      else if (row.mealType === 'dinner') result.dinner = avg;
+      else if (row.mealType === 'snacks') result.snacks = avg;
+    }
+
+    result.total = {
+      calories: result.breakfast.calories + result.lunch.calories + result.dinner.calories + result.snacks.calories,
+      protein: result.breakfast.protein + result.lunch.protein + result.dinner.protein + result.snacks.protein,
+      carbs: result.breakfast.carbs + result.lunch.carbs + result.dinner.carbs + result.snacks.carbs,
+      fat: result.breakfast.fat + result.lunch.fat + result.dinner.fat + result.snacks.fat,
+    };
+
+    return result;
   } catch (error) {
     throw error;
   }
