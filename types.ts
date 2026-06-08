@@ -80,3 +80,19 @@ export interface DateCalorieData {
   calories: number;
   calorieTarget: number;
 }
+
+export interface MealAverage {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+export interface MealAverages {
+  loggedDays: number; // number of distinct days with any food logged in range
+  breakfast: MealAverage;
+  lunch: MealAverage;
+  dinner: MealAverage;
+  snacks: MealAverage;
+  total: MealAverage;
+}
