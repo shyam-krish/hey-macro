@@ -1,0 +1,82 @@
+name: HeyMacro
+options:
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "26.0"
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: 7.0.0
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # Isolation is annotated explicitly (@MainActor on UI models, plain types elsewhere)
+    # so the code compiles identically on Xcode 16 and 26 toolchains.
+    # DEVELOPMENT_TEAM is set in Config/Secrets.xcconfig (needed for device builds/archives only).
+
+configFiles:
+  Debug: Config/Shared.xcconfig
+  Release: Config/Shared.xcconfig
+
+targets:
+  HeyMacro:
+    type: application
+    platform: iOS
+    sources:
+      - path: HeyMacro
+    dependencies:
+      - package: GRDB
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.anonymous.hey-macro
+        PRODUCT_NAME: HeyMacro
+        TARGETED_DEVICE_FAMILY: "1,2" # RN app shipped with iPad support; App Store updates can't drop a device family
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: HeyMacro/Info.plist
+      properties:
+        CFBundleDisplayName: HeyMacro
+        CFBundleShortVersionString: "2.0.0"
+        # Must exceed the last EAS remote build number before shipping (verify in App Store Connect at Phase 7).
+        CFBundleVersion: "100"
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Dark
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+        ITSAppUsesNonExemptEncryption: false
+        NSMicrophoneUsageDescription: Allow Hey Macro to access the microphone to record food entries
+        NSSpeechRecognitionUsageDescription: Allow Hey Macro to recognize speech for logging meals
+        # Injected from Config/Secrets.xcconfig at build time; read via Secrets.swift.
+        OPENAI_API_KEY: $(OPENAI_API_KEY)
+        GEMINI_API_KEY: $(GEMINI_API_KEY)
+        LLM_PROVIDER: $(LLM_PROVIDER)
+
+  HeyMacroTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: HeyMacroTests
+    dependencies:
+      - target: HeyMacro
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.anonymous.hey-macro.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  HeyMacro:
+    build:
+      targets:
+        HeyMacro: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - HeyMacroTests

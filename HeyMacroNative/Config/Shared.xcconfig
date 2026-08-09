@@ -1,0 +1,4 @@
+// Shared build settings for HeyMacro.
+// Secrets.xcconfig is gitignored; the optional include keeps builds working without it
+// (Secrets.swift then fails loudly at first LLM call instead of at build time).
+#include? "Secrets.xcconfig"
