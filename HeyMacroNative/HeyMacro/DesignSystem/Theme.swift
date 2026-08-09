@@ -33,13 +33,50 @@ enum Theme {
 
     enum Fonts {
         /// Avenir Next — all UI text. Weight maps to the family's faces.
-        static func ui(_ size: CGFloat, weight: UIWeight = .regular) -> Font {
-            Font.custom(weight.postScriptName, size: size)
+        static func ui(
+            _ size: CGFloat,
+            weight: UIWeight = .regular,
+            relativeTo textStyle: Font.TextStyle? = nil
+        ) -> Font {
+            Font.custom(
+                weight.postScriptName,
+                size: size,
+                relativeTo: textStyle ?? uiTextStyle(for: size)
+            )
         }
 
         /// DIN Alternate — every number/metric in the app. The family ships Bold only.
-        static func number(_ size: CGFloat) -> Font {
-            Font.custom("DINAlternate-Bold", size: size)
+        static func number(_ size: CGFloat, relativeTo textStyle: Font.TextStyle? = nil) -> Font {
+            Font.custom(
+                "DINAlternate-Bold",
+                size: size,
+                relativeTo: textStyle ?? numberTextStyle(for: size)
+            )
+            .monospacedDigit()
+        }
+
+        private static func uiTextStyle(for size: CGFloat) -> Font.TextStyle {
+            switch size {
+            case 28...: .title
+            case 22...: .title2
+            case 20...: .title3
+            case 17...: .body
+            case 15...: .callout
+            case 13...: .footnote
+            default: .caption
+            }
+        }
+
+        private static func numberTextStyle(for size: CGFloat) -> Font.TextStyle {
+            switch size {
+            case 36...: .largeTitle
+            case 28...: .title
+            case 22...: .title2
+            case 18...: .title3
+            case 16...: .body
+            case 13...: .callout
+            default: .caption
+            }
         }
 
         enum UIWeight {
@@ -62,6 +99,22 @@ enum Theme {
         static let cardRadius: CGFloat = 12
         static let sheetRadius: CGFloat = 24
         static let pillRadius: CGFloat = 24
+    }
+
+    /// Press feedback for flat content cards. Glass controls already supply their own
+    /// system interaction response, so this style intentionally stays off chrome.
+    struct FlatCardButtonStyle: ButtonStyle {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.96)
+                .opacity(configuration.isPressed ? 0.86 : 1)
+                .animation(
+                    reduceMotion ? nil : .easeOut(duration: 0.12),
+                    value: configuration.isPressed
+                )
+        }
     }
 }
 

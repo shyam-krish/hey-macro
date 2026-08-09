@@ -38,6 +38,11 @@ struct CalorieRing: View {
             }
         }
         .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Calories")
+        .accessibilityValue(
+            "\(current.formatted()) of \(target.formatted()) calories"
+        )
     }
 
     /// Ported color tiers (HomeScreen.tsx CalorieRing):
@@ -108,5 +113,8 @@ struct MacroProgressBar: View {
             }
             .frame(height: 8)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(current.formatted()) of \(target.formatted()) grams")
     }
 }

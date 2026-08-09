@@ -39,10 +39,11 @@ struct CalendarPopover: View {
             Button { changeMonth(by: -1) } label: {
                 Image(systemName: "chevron.left")
                     .foregroundStyle(canGoBack ? Theme.Colors.textTertiary : Theme.Colors.gridLine)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
             .disabled(!canGoBack)
+            .accessibilityLabel("Previous month")
 
             Spacer()
 
@@ -55,10 +56,11 @@ struct CalendarPopover: View {
             Button { changeMonth(by: 1) } label: {
                 Image(systemName: "chevron.right")
                     .foregroundStyle(canGoForward ? Theme.Colors.textTertiary : Theme.Colors.gridLine)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
             .disabled(!canGoForward)
+            .accessibilityLabel("Next month")
         }
     }
 
@@ -141,6 +143,11 @@ struct CalendarPopover: View {
         }
         .buttonStyle(.plain)
         .disabled(isFuture)
+        .accessibilityLabel(
+            date.startOfDay().formatted(.dateTime.weekday(.wide).month(.wide).day().year())
+        )
+        .accessibilityValue(dayAccessibilityValue(date: date, datum: datum))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     // MARK: - Month math & data
@@ -194,5 +201,18 @@ struct CalendarPopover: View {
             userID: DataStore.defaultUserID, year: displayedYear, month: displayedMonth
         )) ?? []
         weightData = Dictionary(uniqueKeysWithValues: weights.map { ($0.date.value, $0.weight) })
+    }
+
+    private func dayAccessibilityValue(date: LocalDate, datum: DayCalorieDatum?) -> String {
+        var details: [String] = []
+        if let datum, datum.calories > 0 {
+            details.append(
+                "\(datum.calories.formatted()) of \(datum.calorieTarget.formatted()) calories"
+            )
+        }
+        if let weight = weightData[date.value] {
+            details.append("\(WeightCard.format(weight)) pounds")
+        }
+        return details.isEmpty ? "No food or weight logged" : details.joined(separator: ", ")
     }
 }

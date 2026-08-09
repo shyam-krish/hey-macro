@@ -49,17 +49,17 @@ struct TrendsScreen: View {
                     Text(range.label)
                         .font(Theme.Fonts.ui(14, weight: .semibold))
                         .foregroundStyle(model.range == range ? .white : Theme.Colors.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .background(model.range == range ? Theme.Colors.track : .clear)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(model.range == range ? .isSelected : [])
             }
         }
         .padding(4)
         .background(Theme.Colors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func seriesToggles(_ model: TrendsModel) -> some View {
@@ -87,9 +87,12 @@ struct TrendsScreen: View {
             }
             .padding(.vertical, 6)
             .padding(.horizontal, 12)
+            .frame(minHeight: 44)
             .background(Capsule().stroke(isOn ? color : Theme.Colors.track, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .accessibilityValue(isOn ? "Shown" : "Hidden")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     private func statCards(_ model: TrendsModel) -> some View {
@@ -178,18 +181,16 @@ struct TrendChart: View {
         return plotRange.lowerBound + fraction * (plotRange.upperBound - plotRange.lowerBound)
     }
 
-    private var xLabelDates: Set<String> {
+    private var xLabelValues: [String] {
         let dates = model.points.map(\.date.value)
-        guard dates.count > 5 else { return Set(dates) }
-        let stride = max(1, (dates.count - 1) / 4)
-        var picked = Set<String>()
-        var index = 0
-        while index < dates.count {
-            picked.insert(dates[index])
-            index += stride
+        let labelCount = min(dates.count, 5)
+        guard labelCount > 1 else { return dates }
+
+        return (0..<labelCount).map { labelIndex in
+            let fraction = Double(labelIndex) / Double(labelCount - 1)
+            let dataIndex = Int((fraction * Double(dates.count - 1)).rounded())
+            return dates[dataIndex]
         }
-        picked.insert(dates.last!)
-        return picked
     }
 
     // MARK: - Chart
@@ -232,10 +233,11 @@ struct TrendChart: View {
             }
         }
         .chartYScale(domain: (plotRange.map { $0.lowerBound...$0.upperBound }) ?? 0...1)
+        .chartXScale(range: .plotDimension(startPadding: 12, endPadding: 12))
         .chartXAxis {
-            AxisMarks(values: .automatic) { value in
-                if let label = value.as(String.self), xLabelDates.contains(label) {
-                    AxisValueLabel {
+            AxisMarks(values: xLabelValues) { value in
+                if let label = value.as(String.self) {
+                    AxisValueLabel(centered: true, collisionResolution: .disabled) {
                         Text(Self.shortDate(label))
                             .font(Theme.Fonts.number(11))
                             .foregroundStyle(Theme.Colors.textTertiary)
@@ -396,6 +398,7 @@ struct ScreenHeader: View {
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
+                        .glassEffect(.regular.interactive(), in: .circle)
                 }
                 .buttonStyle(.plain)
                 Spacer()

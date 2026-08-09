@@ -9,7 +9,7 @@ struct TopBar: View {
 
     var body: some View {
         HStack {
-            iconButton("calendar", action: onCalendarTap)
+            iconButton("calendar", accessibilityLabel: "Calendar", action: onCalendarTap)
 
             Spacer()
 
@@ -21,10 +21,11 @@ struct TopBar: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Previous day")
 
                 Text(dateLabel)
                     .font(Theme.Fonts.ui(14, weight: .medium))
@@ -38,10 +39,12 @@ struct TopBar: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Next day")
+                .accessibilityHidden(day.isToday)
                 .opacity(day.isToday ? 0 : 1)
                 .disabled(day.isToday)
             }
@@ -54,6 +57,7 @@ struct TopBar: View {
             } label: {
                 iconLabel("person")
             }
+            .accessibilityLabel("More")
         }
         .padding(.horizontal, Theme.Spacing.screenPadding)
         .padding(.vertical, 8)
@@ -73,7 +77,11 @@ struct TopBar: View {
         Task { await day.changeDate(to: target) }
     }
 
-    private func iconButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+    private func iconButton(
+        _ symbol: String,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
         Button {
             Haptics.lightTap()
             action()
@@ -81,13 +89,14 @@ struct TopBar: View {
             iconLabel(symbol)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     private func iconLabel(_ symbol: String) -> some View {
         Image(systemName: symbol)
             .font(.system(size: 16))
             .foregroundStyle(.white)
-            .frame(width: 36, height: 36)
+            .frame(width: 44, height: 44)
             .contentShape(Circle())
             .glassEffect(.regular.interactive(), in: .circle)
     }

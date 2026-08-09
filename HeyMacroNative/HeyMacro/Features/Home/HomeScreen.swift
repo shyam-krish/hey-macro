@@ -94,22 +94,38 @@ struct HomeScreen: View {
     }
 
     private func summarySection(_ log: DailyLog) -> some View {
-        HStack(alignment: .center, spacing: 20) {
-            CalorieRing(
-                current: log.totalCalories,
-                target: log.targetCalories,
-                isToday: day.isToday
-            )
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 20) {
+                calorieRing(log)
+                macroBars(log)
+                    .frame(minWidth: 220)
+            }
 
-            VStack(spacing: 14) {
-                MacroProgressBar(label: "Protein", current: log.totalProtein, target: log.targetProtein)
-                MacroProgressBar(label: "Carbohydrates", current: log.totalCarbs, target: log.targetCarbs)
-                MacroProgressBar(label: "Fat", current: log.totalFat, target: log.targetFat)
+            VStack(spacing: 20) {
+                calorieRing(log)
+                macroBars(log)
+                    .frame(maxWidth: .infinity)
             }
         }
         .padding(.bottom, 20)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Colors.track).frame(height: 0.5)
+        }
+    }
+
+    private func calorieRing(_ log: DailyLog) -> some View {
+        CalorieRing(
+            current: log.totalCalories,
+            target: log.targetCalories,
+            isToday: day.isToday
+        )
+    }
+
+    private func macroBars(_ log: DailyLog) -> some View {
+        VStack(spacing: 14) {
+            MacroProgressBar(label: "Protein", current: log.totalProtein, target: log.targetProtein)
+            MacroProgressBar(label: "Carbohydrates", current: log.totalCarbs, target: log.targetCarbs)
+            MacroProgressBar(label: "Fat", current: log.totalFat, target: log.targetFat)
         }
     }
 

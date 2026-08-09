@@ -89,6 +89,8 @@ struct InputBar: View {
         }
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .circle)
+        .accessibilityLabel(day.isAskMode ? "Exit ask mode" : "Ask nutrition question")
+        .accessibilityAddTraits(day.isAskMode ? .isSelected : [])
     }
 
     private var pill: some View {
@@ -152,6 +154,7 @@ struct InputBar: View {
         }
         .buttonStyle(.plain)
         .glassEffect(.regular.tint(Theme.Colors.recording).interactive(), in: .circle)
+        .accessibilityLabel("Stop recording")
     }
 
     private var sendButton: some View {
@@ -165,6 +168,7 @@ struct InputBar: View {
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .circle)
         .overlay(Circle().stroke(Theme.Colors.accent, lineWidth: 2))
+        .accessibilityLabel("Send")
     }
 
     private var micButton: some View {
@@ -188,6 +192,7 @@ struct InputBar: View {
         .buttonStyle(.plain)
         .glassEffect(.regular.tint(Theme.Colors.accent).interactive(), in: .circle)
         .opacity(voiceEnabled ? 1 : 0.55)
+        .accessibilityLabel(isPreparingVoice ? "Preparing microphone" : "Start voice input")
     }
 
     private func submit() {

@@ -259,6 +259,8 @@ struct ProfileScreen: View {
                         .padding(.horizontal, 14)
                         .background(.white)
                         .clipShape(Capsule())
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -276,6 +278,7 @@ struct ProfileScreen: View {
                 .foregroundStyle(Theme.Colors.textPrimary)
         }
         .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
     }
 
     private func labeledField(_ label: String, text: Binding<String>) -> some View {

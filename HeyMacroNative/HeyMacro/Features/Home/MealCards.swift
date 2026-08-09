@@ -85,7 +85,7 @@ struct MealCard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardRadius))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(Theme.FlatCardButtonStyle())
         }
     }
 
@@ -141,7 +141,7 @@ struct WeightCard: View {
             .background(Theme.Colors.card)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardRadius))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(Theme.FlatCardButtonStyle())
     }
 
     static func format(_ weight: Double) -> String {
