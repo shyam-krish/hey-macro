@@ -54,6 +54,13 @@ struct InputBar: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            // The bar's whole row consumes taps (nothing leaks to content behind it);
+            // a tap on the dead space around the pill focuses the text field. Buttons
+            // and the field itself still take priority over this gesture.
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if !isRecording { focused = true }
+            }
             .background {
                 // Opaque black behind the bar (RN-style) so scrolled content doesn't
                 // bleed through as a two-tone panel, with a fade-out strip above it.
