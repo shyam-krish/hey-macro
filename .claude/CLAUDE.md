@@ -1,366 +1,123 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Hey Macro
 
-Voice-first iOS macro tracking app built with React Native/Expo.
+Voice-first iOS macro tracking app (React Native + Expo, TypeScript). Users speak or type what they ate; an LLM parses it into structured macros and logs them against daily targets, organized by meal. Local-only — no backend; the only network calls are to LLM APIs.
 
-## What This App Does
+## Commands
 
-Users speak or type what they ate, the app sends it to an LLM for nutritional analysis, and logs the macros against daily targets. Tracks calories, protein, carbs, and fat, organized by meal (breakfast, lunch, dinner, snacks).
+```bash
+yarn install            # Install dependencies
+cp .env.example .env    # Then fill in API keys (see Environment Variables)
 
-## Tech Stack
+yarn start              # Expo dev server (note: this runs `expo start --tunnel`)
+yarn ios                # Build + run on iOS simulator/device (expo run:ios)
+yarn android            # Build + run on Android (expo run:android)
+yarn clean              # expo prebuild --clean (regenerate native ios/ android/ dirs)
 
-- **Framework**: React Native with Expo (blank-typescript template)
-- **Storage**: expo-sqlite (local only, no backend)
-- **Voice**: @react-native-voice/voice (local speech-to-text)
-- **LLM Providers**: OpenAI (default) and Google Gemini
-- **Schema Validation**: Zod
-- **Language**: TypeScript
-- **Package Manager**: Yarn
+yarn build              # eas build --platform ios
+yarn deploy             # eas submit --platform ios (TestFlight)
 
-## External Libraries
-Always use context7 when I need code generation for a library/API documentation. This means you should automatically use the Context7 MCP
-tools to resolve library id and get library docs without me having to explicitly ask.
-
-## Directory Structure
-
-```
-hey-macro/
-├── App.tsx                    # Main entry point, all UI starts here
-├── types.ts                   # TypeScript interfaces
-├── constants.ts               # System prompts and mock data
-├── app.json
-├── package.json
-├── hooks/
-│   ├── useAppData.ts          # Main app data hook
-│   ├── useVoiceInput.ts       # Voice recording hook
-│   └── useVoiceFoodLogger.ts  # Voice + LLM integration
-├── services/
-│   ├── llmTypes.ts            # Common LLM types and Zod schemas
-│   ├── openai.ts              # OpenAI Responses API provider
-│   ├── gemini.ts              # Google Gemini provider
-│   ├── llm.ts                 # Unified LLM interface
-│   └── storage.ts             # SQLite operations
-└── .claude/
-    └── CLAUDE.md
+npx tsc --noEmit        # Type-check (tsconfig extends expo/tsconfig.base, strict: true)
 ```
 
-Structure has emerged organically - hooks for React state, services for business logic.
+There is **no test suite and no linter configured** — don't look for `yarn test`/`yarn lint`. `npx tsc --noEmit` is the only static check. Verify behavior by running the app.
 
-## UI Layout
+For library/API docs (Expo, React Navigation, Zod, OpenAI/Gemini SDKs, expo-sqlite), use the Context7 MCP tools automatically rather than relying on memory.
 
-```
-┌─────────────────────────────────────────┐
-│                                         │
-│   ┌───────┐    Protein      130/150 ━━━ │
-│   │ 2500  │    Carbs        220/300 ━━━ │
-│   │ /2700 │    Fat           50/90  ━━━ │
-│   └───────┘                             │
-│      ○ (ring)                           │
-│                                         │
-│  Food                                   │
-│  ─────────────────────────────────────  │
-│  Breakfast                              │
-│  ┌─────────────────────────┬──────────┐ │
-│  │ - 3 eggs                │ 400 cal  │ │
-│  │ - 1 slice toast         │ 30g P    │ │
-│  │ - 1 cappuccino          │ 30g C    │ │
-│  │                         │ 7g F     │ │
-│  └─────────────────────────┴──────────┘ │
-│                                         │
-│  Lunch                                  │
-│  ┌─────────────────────────┬──────────┐ │
-│  │ - ...                   │ ...      │ │
-│  └─────────────────────────┴──────────┘ │
-│                                         │
-│  Dinner                                 │
-│  ┌─────────────────────────┬──────────┐ │
-│  │ - ...                   │ ...      │ │
-│  └─────────────────────────┴──────────┘ │
-│                                         │
-│  Snacks                                 │
-│  ┌─────────────────────────┬──────────┐ │
-│  │ - ...                   │ ...      │ │
-│  └─────────────────────────┴──────────┘ │
-│                                         │
-│   ┌─────┐                   ┌─────┐    │
-│   │ Aa  │                   │ 🎤  │    │
-│   └─────┘                   └─────┘    │
-│   (text)                    (voice)    │
-└─────────────────────────────────────────┘
-```
+## Architecture
 
-### UI Components
+### Data flow & single source of truth
 
-1. **Macro Summary (top)**
-   - Calorie ring: circular progress showing current/target
-   - Three horizontal progress bars: protein, carbs, fat with current/target labels
+`App.tsx` calls `useAppData()` **exactly once**, then distributes the result through `AppDataProvider` (React context). Every screen reads app state via `useAppDataContext()` — **do not call `useAppData()` again** in screens/components, or you'll create a second, unsynced store. The provider (`contexts/AppDataContext.tsx`) exposes: `user`, `targets`, `dailyLog`, `selectedDate`/`changeDate`/`isToday`, weight state, and mutators (`updateTargets`, `updateUser`, `saveWeight`, `refresh`, `invalidateCache`).
 
-2. **Food Section (scrollable)**
-   - Grouped by meal: Breakfast, Lunch, Dinner, Snacks
-   - Each meal card shows:
-     - Left: list of food items with quantity
-     - Right: total macros for that meal (cal, P, C, F)
-   - Empty meals can be hidden or show "No items"
+Navigation is a React Navigation native stack (`App.tsx`) with three screens: `Home`, `Profile`, `Trends` (types in `navigation/types.ts`, headers hidden, black background).
 
-3. **Floating Action Buttons (bottom)**
-   - Left: Text input button (Aa) - opens text entry modal
-   - Right: Microphone button (M) - starts voice recording
-   - Fixed position, always visible
+### The in-memory day cache (important gotcha)
 
-## Data Models
+`hooks/useAppData.ts` keeps a `Map<date, DailyLog>` and **prefetches ±`PREFETCH_DAYS` (7) surrounding days** so date switching is instant. Consequence: **after any DB mutation for a date, that date's cache is stale.** The pattern used throughout is `invalidateCache(date)` then `refresh()` (or `changeDate`). If you add a new write path and the UI doesn't update, a missing cache invalidation is the usual cause.
 
-```typescript
-export interface BaseEntity {
-  createdAt: string;
-  updatedAt: string;
-}
+### Per-day target snapshots
 
-export interface User extends BaseEntity {
-  userID: string;
-  firstName: string;
-  lastName: string;
-}
+Daily targets aren't purely global. When a `daily_logs` row is created, the current macro targets are **snapshotted** into `targetCalories/targetProtein/targetCarbs/targetFat` columns (`getOrCreateDailyLog`). `updateMacroTargets` updates the global row **and today's log only** — past days keep the targets they were logged under. Trends and the calendar read these per-day snapshots, so changing targets never retroactively rewrites history.
 
-export interface MacroTargets extends BaseEntity {
-  userID: string;
-  calories: number;
-  protein: number;   // grams
-  carbs: number;     // grams
-  fat: number;       // grams
-}
+### LLM layer (`services/`)
 
-export interface FoodEntry extends BaseEntity, FoodItem {
-  foodEntryID: string;
-  userID: string;
-}
+Model-agnostic. `services/llm.ts` is the only entry point callers use; it selects a provider and builds prompts:
 
-export interface FoodItem {
-  name: string;
-  quantity: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-}
+- **`parseFoodInput()`** — food logging. Given the transcript, current time, today's log, and previous days, returns an `LLMResponse` (`{breakfast, lunch, dinner, snacks}`). **This is a replace-all model:** the prompt instructs the LLM to return the *entire updated day*, and `replaceDailyFoodEntries()` deletes all of the day's `food_entries` and re-inserts the returned set inside one transaction. It is **not** an append — the "today's food so far" context is what preserves existing items.
+- **`getRecommendation()`** — nutrition Q&A chat. Returns `{isValid, answer}`; `isValid=false` gates off-topic questions. Strips markdown/citation links from the answer before display.
 
-export interface DailyLog extends BaseEntity {
-  dailyLogID: string;
-  userID: string;
-  date: string;           // YYYY-MM-DD
-  totalCalories: number;
-  totalProtein: number;
-  totalCarbs: number;
-  totalFat: number;
-  breakfast: FoodEntry[];
-  lunch: FoodEntry[];
-  dinner: FoodEntry[];
-  snacks: FoodEntry[];
-}
+Provider abstraction: `LLMProvider` interface (`services/llmTypes.ts`) with `openaiProvider` and `geminiProvider`. `ProviderType` is `'openai' | 'gemini' | 'gemini3'` (the two Gemini values share `geminiProvider`, different models). **`DEFAULT_PROVIDER` in `llm.ts` is `'openai'`** (`gpt-5.4-mini-2026-03-17`) despite the README describing Gemini as default — trust the code. Gemini models: `gemini-2.5-flash`, `gemini-3-flash-preview`.
 
-export interface LLMResponse {
-  breakfast: FoodItem[];
-  lunch: FoodItem[];
-  dinner: FoodItem[];
-  snacks: FoodItem[];
-}
-```
+Structured output is enforced with **Zod schemas** (`llmTypes.ts`): OpenAI uses the Responses API `responses.parse` + `zodTextFormat`; Gemini has a hand-rolled `zodToGeminiSchema` converter, `responseSchema`, then `schema.parse` validation, plus retry-with-backoff and a 5-min timeout. Web search grounding (`web_search_preview` / `googleSearch`) is on for OpenAI and Gemini 3 but **unsupported on Gemini 2.5** (`supportsWebSearch = provider !== 'gemini'`). System prompts live in `constants.ts` (`foodParsingPrompt`, `recommendationPrompt`).
 
-## Database Schema (SQLite)
+### Voice pipeline
 
-```sql
--- User (single user for now, but future-proofed)
-CREATE TABLE users (
-  userID TEXT PRIMARY KEY,
-  firstName TEXT NOT NULL,
-  lastName TEXT NOT NULL,
-  createdAt TEXT NOT NULL,
-  updatedAt TEXT NOT NULL
-);
+`hooks/useVoiceInput.ts` wraps `@react-native-voice/voice` (on-device STT; resolves the final transcript on `onSpeechEnd` with a 500ms timeout fallback, and silently ignores "no speech detected"). `hooks/useVoiceFoodLogger.ts` composes it with `parseFoodInput` + save, and flags requests that failed because the app was backgrounded mid-processing.
 
--- Macro targets
-CREATE TABLE macro_targets (
-  userID TEXT PRIMARY KEY,
-  calories INTEGER NOT NULL,
-  protein INTEGER NOT NULL,
-  carbs INTEGER NOT NULL,
-  fat INTEGER NOT NULL,
-  createdAt TEXT NOT NULL,
-  updatedAt TEXT NOT NULL,
-  FOREIGN KEY (userID) REFERENCES users(userID)
-);
+### Storage (`services/storage.ts`)
 
--- Daily logs
-CREATE TABLE daily_logs (
-  dailyLogID TEXT PRIMARY KEY,
-  userID TEXT NOT NULL,
-  date TEXT NOT NULL,
-  totalCalories INTEGER DEFAULT 0,
-  totalProtein INTEGER DEFAULT 0,
-  totalCarbs INTEGER DEFAULT 0,
-  totalFat INTEGER DEFAULT 0,
-  createdAt TEXT NOT NULL,
-  updatedAt TEXT NOT NULL,
-  FOREIGN KEY (userID) REFERENCES users(userID)
-);
+Single SQLite DB `heymacro.db` (expo-sqlite, WAL mode). `initDatabase()` creates tables and runs `runMigrations()` — schema changes are **additive and idempotent** (checks `PRAGMA table_info`, `CREATE TABLE IF NOT EXISTS`), so extend the schema by adding a migration step there rather than editing the base `CREATE`. Tables: `users`, `macro_targets`, `daily_logs`, `food_entries`, `weight_logs`. All types are in `types.ts`.
 
-CREATE UNIQUE INDEX idx_daily_logs_user_date ON daily_logs(userID, date);
+### Screens & components
 
--- Food entries
-CREATE TABLE food_entries (
-  foodEntryID TEXT PRIMARY KEY,
-  userID TEXT NOT NULL,
-  dailyLogID TEXT NOT NULL,
-  mealType TEXT NOT NULL,       -- 'breakfast' | 'lunch' | 'dinner' | 'snacks'
-  name TEXT NOT NULL,
-  quantity TEXT NOT NULL,
-  calories INTEGER NOT NULL,
-  protein INTEGER NOT NULL,
-  carbs INTEGER NOT NULL,
-  fat INTEGER NOT NULL,
-  createdAt TEXT NOT NULL,
-  updatedAt TEXT NOT NULL,
-  FOREIGN KEY (userID) REFERENCES users(userID),
-  FOREIGN KEY (dailyLogID) REFERENCES daily_logs(dailyLogID)
-);
+- `screens/HomeScreen.tsx` (large) — calorie ring, macro bars, per-meal cards, the text/voice `InputBar`, and the recommendation chat. Contains most sub-components inline.
+- `screens/ProfileScreen.tsx` — edit user + macro targets. Uses `useMacroCalculator` (enter any 3 of calories/protein/carbs/fat, it derives the 4th via 4/4/9 cal-per-gram).
+- `screens/TrendsScreen.tsx` — calories-vs-target and weight charts (`getTrendData`) plus per-meal averages (`getMealAverages`); uses `react-native-svg`.
+- `components/` — `TopBar`, `CalendarDropdown` (month calorie/weight rings via `getMonthCalorieData`/`getMonthWeightData`), `MealDetailSheet` (view/edit/delete a meal's items), `WeightInputSheet`.
 
-CREATE INDEX idx_food_entries_daily_log ON food_entries(dailyLogID);
-```
+## Conventions & gotchas
 
-## Core User Flows
-
-### Voice Input Flow
-```
-Tap mic button
-    ↓
-Recording starts (visual feedback)
-    ↓
-User speaks: "I had 3 eggs and toast for breakfast"
-    ↓
-Tap again to stop (or auto-stop on silence)
-    ↓
-Speech-to-text transcription
-    ↓
-Send to LLM with context (previous entries, time of day)
-    ↓
-LLM returns structured FoodItems + inferred meal type
-    ↓
-Save to database, update UI
-```
-
-### Text Input Flow
-```
-Tap text button
-    ↓
-Modal/sheet opens with text input
-    ↓
-User types: "chicken salad for lunch, about 400 cal"
-    ↓
-Submit to LLM
-    ↓
-Same flow as voice from here
-```
-
-## LLM Integration
-
-### Architecture
-
-The app uses a **model-agnostic architecture** with support for multiple LLM providers:
-
-**Providers:**
-- **OpenAI** (default) - `gpt-5.4-mini-2026-03-17` via Responses API
-  - ✅ Web search tool (`web_search_preview`)
-  - ✅ Structured JSON schema with Zod
-  - ✅ Reasoning capability
-- **Gemini** - `gemini-2.5-flash` / `gemini-3-flash-preview` via generateContent
-  - ✅ Structured JSON schema
-  - ✅ Thinking/reasoning capability
-  - ⚠️ Web search + structured output can be unreliable on preview models
-
-**Schema Validation:**
-Uses Zod schemas for type-safe parsing:
-```typescript
-const FoodItemSchema = z.object({
-  name: z.string(),
-  quantity: z.string(),
-  calories: z.number(),
-  protein: z.number(),
-  carbs: z.number(),
-  fat: z.number(),
-});
-
-const LLMResponseSchema = z.object({
-  breakfast: z.array(FoodItemSchema),
-  lunch: z.array(FoodItemSchema),
-  dinner: z.array(FoodItemSchema),
-  snacks: z.array(FoodItemSchema),
-});
-```
-
-**Input:**
-- User's transcript (voice or text)
-- Current time (to help infer meal type)
-- Previous day's logs (for "leftovers" context)
-- System prompt with detailed instructions
-
-**Output:**
-Structured JSON guaranteed to match the schema:
-```json
-{
-  "breakfast": [
-    { "name": "eggs", "quantity": "3 large", "calories": 210, "protein": 18, "carbs": 1, "fat": 15 }
-  ],
-  "lunch": [],
-  "dinner": [],
-  "snacks": []
-}
-```
-
-**Features:**
-- Parse natural language into structured food items
-- Estimate macros (using web search for OpenAI)
-- Infer meal type from context/time if not explicit
-- Handle references like "same as yesterday" or "leftover chicken"
-- Low-effort reasoning for better nutritional estimates
-
-## Implementation Order
-
-1. **Types & Storage** - Define types.ts, set up SQLite in storage.ts
-2. **Static UI** - Build the layout with hardcoded data
-3. **Wire Storage** - Load/save real data, show actual state
-4. **Text Input** - Add the text input flow (simpler than voice)
-5. **LLM Integration** - Connect text input to LLM, parse response
-6. **Voice Input** - Add recording and speech-to-text
-7. **Polish** - Edit/delete entries, error handling, design tweaks
-
-## Conventions
-
-- Single user assumed (no auth), userID can be hardcoded "default-user"
-- Dates stored as ISO strings (YYYY-MM-DD for date, full ISO for timestamps)
-- All macros stored as integers (round as needed)
-- IDs generated with uuid v4
-- Meal types: 'breakfast' | 'lunch' | 'dinner' | 'snacks'
+- **Single user**, hardcoded `userID = 'default-user'`. No auth.
+- **Dates are local `YYYY-MM-DD`, never UTC.** Both `storage.ts` and `useAppData.ts` have their own local-date formatter specifically to avoid the UTC off-by-one; use those helpers, don't reach for `toISOString().split('T')[0]`.
+- All macros stored as **integers** (round on the way in — `validateFoodItem` and DB inserts assume this).
+- IDs are **uuid v4**; `import 'react-native-get-random-values'` must load **before** `uuid` (see top of `storage.ts`).
+- Meal types are exactly `'breakfast' | 'lunch' | 'dinner' | 'snacks'`.
+- `constants.ts` `mockTargets`/`mockDailyLog` are the initial state rendered before the DB finishes loading — not test fixtures.
 
 ## Environment Variables
 
-Required API keys:
 ```
-EXPO_PUBLIC_OPENAI_API_KEY=sk-...      # For OpenAI (default provider)
-EXPO_PUBLIC_GEMINI_API_KEY=...         # For Gemini (optional)
+EXPO_PUBLIC_OPENAI_API_KEY=sk-...   # default provider
+EXPO_PUBLIC_GEMINI_API_KEY=...      # for gemini / gemini3 providers
 ```
 
-## Running the App
+At least one key is required (the OpenAI key for the default config). `EXPO_PUBLIC_` prefix is required for Expo to expose them to the client at build time.
+
+## Native iOS rewrite (`HeyMacroNative/`)
+
+The app is being rewritten as a **fully native SwiftUI app** in `HeyMacroNative/` (iOS 26+, Liquid Glass, `SpeechAnalyzer` STT, GRDB). The RN app above stays in place as the **reference spec** until the native app ships; when both exist, feature semantics are defined by the RN code and visual/behavior deltas are deliberate only if noted below. See `HeyMacroNative/README.md` for the full build/verify loop and release checklist.
+
+### Working on it
 
 ```bash
-yarn start              # Start Expo dev server
-yarn start --tunnel     # Use if local network issues
+cd HeyMacroNative
+xcodegen generate       # REQUIRED after adding/removing files or editing project.yml —
+                        # HeyMacro.xcodeproj is gitignored and regenerated (never edit it)
+xcodebuild build -project HeyMacro.xcodeproj -scheme HeyMacro \
+  -destination 'platform=iOS Simulator,name=HeyMacro-Dev,OS=26.3.1'
+xcodebuild test  -project HeyMacro.xcodeproj -scheme HeyMacro \
+  -destination 'platform=iOS Simulator,name=HeyMacro-Dev,OS=26.3.1'   # unit tests (Swift Testing)
+xcrun simctl launch HeyMacro-Dev com.anonymous.hey-macro -seedDemoData  # wipes DB, seeds ~6 weeks of demo data
 ```
 
-Press `i` for iOS simulator or scan QR with Expo Go app.
+Secrets: `Config/Secrets.xcconfig` (gitignored; copy `Secrets.example.xcconfig`) → injected via Info.plist → read by `Services/Secrets.swift`. Keys: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `LLM_PROVIDER`, `DEVELOPMENT_TEAM`. GRDB is the only package dependency.
 
-## Not In Scope (MVP)
+### Non-negotiable constraints
 
-- User authentication / multiple users
-- Cloud sync / backend
-- History trends / charts
-- Meal planning
-- Barcode scanning
-- Settings screen for targets (hardcode initially)
+- **Bundle ID stays `com.anonymous.hey-macro`** — the native app ships as an update to the existing App Store Connect record so the sandbox persists, and `Database/DatabaseAdoption.swift` migrates the RN expo-sqlite DB (`Documents/SQLite/heymacro.db`, WAL checkpoint → atomic move to `Application Support/Database/`) on first launch. Changing the bundle ID silently orphans every user's data.
+- **`Services/LLM/Prompts.swift` is a verbatim port of `constants.ts`** with exactly two sanctioned fixes: timestamps are sent as *local* ISO8601 (the prompt's meal-time rules are wall-clock) and "up to 5 days" → 7. The bracket item format `[N cal, Ng P, Ng C, Ng F]` and the `"Empty"` literal in `PromptFormatter.swift` are load-bearing for the replace-all model — golden tests in `PromptFormatterTests` guard them. If a prompt changes in either codebase, port the change to the other.
+- **`Database/DataStore.swift` is a 1:1 port of `storage.ts`** — same schema, same semantics (replace-all save in one transaction, lazy total reconciliation on read, `updateMacroTargets` rewrites *today's* snapshot only). Schema changes go through GRDB migrations in `AppDatabase.swift`, mirrored additively in the RN `runMigrations()` while both apps exist.
+- **Voice cannot run on the simulator** (`SpeechTranscriber` model install fails with "not subscribed to transcription.en"). DEBUG simulator builds fake a transcript (`Services/Speech/VoiceInput.swift`); real STT is device-only.
+
+### Deliberate divergences from the RN app
+
+- No ±7-day prefetch cache (GRDB is fast enough; `DayModel` loads per date change).
+- Midnight rollover handling added (`.NSCalendarDayChanged` + scenePhase) — the RN app lacks it.
+- Haptics added throughout; RN had none.
+- Draft input text survives the "?" ask-mode toggle (RN wiped it); red trash icon in the meal editor (RN grey).
+- Ring/summary numbers render with locale grouping ("1,249" vs RN's "1249").
+- Liquid Glass on chrome only (input bar, top-bar buttons, status card, popovers); meal/weight/stat cards stay flat `#1a1a1a`.
