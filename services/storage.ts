@@ -5,6 +5,7 @@
 
 import 'react-native-get-random-values'; // Must be imported before uuid
 import * as SQLite from 'expo-sqlite';
+import { Directory, File, Paths } from 'expo-file-system';
 import { v4 as uuidv4 } from 'uuid';
 import type { User, MacroTargets, FoodEntry, DailyLog, FoodItem, LLMResponse, DateCalorieData, WeightLog, TrendDataPoint, MealAverage, MealAverages } from '../types';
 
@@ -906,4 +907,29 @@ export async function clearAllData(): Promise<void> {
   } catch (error) {
     throw error;
   }
+}
+
+/**
+ * Write a full backup of the database to a single SQLite file in the cache directory.
+ *
+ * Uses `VACUUM INTO`, which produces a consistent snapshot that includes writes still
+ * sitting in the WAL — a plain copy of heymacro.db could miss them. The output has the
+ * same schema the native app adopts on first launch, so it doubles as a restore source.
+ *
+ * @returns file:// URI of the backup, ready to hand to the share sheet
+ */
+export async function exportDatabaseBackup(): Promise<string> {
+  if (!db) throw new Error('Database not initialized');
+
+  // Fresh directory per export so old backups don't accumulate in the cache
+  const exportDir = new Directory(Paths.cache, 'exports');
+  if (exportDir.exists) exportDir.delete();
+  exportDir.create();
+
+  const backup = new File(exportDir, `heymacro-backup-${getTodayDate()}.db`);
+  // VACUUM INTO takes a filesystem path, not a file:// URI
+  const backupPath = decodeURIComponent(backup.uri.replace(/^file:\/\//, ''));
+  await db.runAsync('VACUUM INTO ?', [backupPath]);
+
+  return backup.uri;
 }

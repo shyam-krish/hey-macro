@@ -8,13 +8,17 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Sharing from 'expo-sharing';
 import { useAppDataContext } from '../contexts/AppDataContext';
 import { useMacroCalculator } from '../hooks/useMacroCalculator';
 import { ProfileScreenNavigationProp } from '../navigation/types';
+import { exportDatabaseBackup } from '../services/storage';
 
 export function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
@@ -22,6 +26,7 @@ export function ProfileScreen() {
   const [isEditingMacros, setIsEditingMacros] = useState(false);
   const [isEditingUser, setIsEditingUser] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
 
@@ -94,6 +99,25 @@ export function ProfileScreen() {
       // Error is handled by the updateTargets hook
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      if (!(await Sharing.isAvailableAsync())) {
+        throw new Error('Sharing is not available on this device.');
+      }
+      const uri = await exportDatabaseBackup();
+      // Resolves when the share sheet is dismissed (shared or cancelled)
+      await Sharing.shareAsync(uri, { UTI: 'public.database' });
+    } catch (error) {
+      Alert.alert(
+        'Export failed',
+        error instanceof Error ? error.message : 'Something went wrong. Please try again.'
+      );
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -263,6 +287,33 @@ export function ProfileScreen() {
               <Text style={styles.formulaText}>1g Protein = 4 calories</Text>
               <Text style={styles.formulaText}>1g Carbs = 4 calories</Text>
               <Text style={styles.formulaText}>1g Fat = 9 calories</Text>
+            </View>
+          )}
+
+          {/* Data Export */}
+          {!isEditingMacros && !isEditingUser && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionLabel}>DATA</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.exportRow}
+                onPress={handleExport}
+                activeOpacity={0.7}
+                disabled={isExporting}
+              >
+                <View style={styles.exportTextContainer}>
+                  <Text style={styles.exportTitle}>Export Data</Text>
+                  <Text style={styles.exportSubtitle}>
+                    Save a backup file of everything you've logged
+                  </Text>
+                </View>
+                {isExporting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Ionicons name="share-outline" size={22} color="#fff" />
+                )}
+              </TouchableOpacity>
             </View>
           )}
         </ScrollView>
@@ -536,6 +587,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Avenir Next',
     marginBottom: 4,
+  },
+
+  // Data Export
+  exportRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+  },
+  exportTextContainer: {
+    flex: 1,
+    marginRight: 16,
+  },
+  exportTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'Avenir Next',
+  },
+  exportSubtitle: {
+    color: '#666',
+    fontSize: 13,
+    fontFamily: 'Avenir Next',
+    marginTop: 2,
   },
 
   // Bottom Buttons
