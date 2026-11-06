@@ -46,9 +46,13 @@ targets:
         UILaunchScreen: {}
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # All four on iPad (matches the RN build) — App Store Connect rejects iPad builds that
+        # support multitasking without every orientation (ITMS-90474).
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         ITSAppUsesNonExemptEncryption: false
         NSMicrophoneUsageDescription: Allow Hey Macro to access the microphone to record food entries
         NSSpeechRecognitionUsageDescription: Allow Hey Macro to recognize speech for logging meals
